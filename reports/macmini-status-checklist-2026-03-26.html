@@ -1,0 +1,280 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>맥미니 임시 설정 현황 체크리스트</title>
+  <style>
+    :root {
+      --bg: #0b1020;
+      --card: #141b34;
+      --card2: #1a2345;
+      --text: #eef2ff;
+      --muted: #a9b3d1;
+      --ok: #22c55e;
+      --warn: #f59e0b;
+      --bad: #ef4444;
+      --line: #2d3a68;
+      --accent: #60a5fa;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Pretendard", sans-serif;
+      background: linear-gradient(180deg, #0b1020 0%, #111933 100%);
+      color: var(--text);
+      line-height: 1.55;
+    }
+    .wrap {
+      max-width: 920px;
+      margin: 0 auto;
+      padding: 24px 16px 64px;
+    }
+    h1 {
+      font-size: 28px;
+      margin: 0 0 10px;
+    }
+    .sub {
+      color: var(--muted);
+      margin-bottom: 20px;
+      font-size: 14px;
+    }
+    .card {
+      background: rgba(20, 27, 52, 0.9);
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      padding: 18px;
+      margin-bottom: 16px;
+      box-shadow: 0 10px 30px rgba(0,0,0,.18);
+    }
+    h2 {
+      font-size: 18px;
+      margin: 0 0 12px;
+    }
+    .item {
+      display: flex;
+      gap: 12px;
+      align-items: flex-start;
+      padding: 12px 0;
+      border-top: 1px solid rgba(255,255,255,.06);
+    }
+    .item:first-of-type { border-top: 0; }
+    input[type="checkbox"] {
+      width: 20px;
+      height: 20px;
+      margin-top: 2px;
+      accent-color: var(--accent);
+      flex: 0 0 auto;
+    }
+    .label {
+      flex: 1;
+    }
+    .title {
+      font-weight: 700;
+      margin-bottom: 4px;
+    }
+    .desc {
+      color: var(--muted);
+      font-size: 14px;
+    }
+    .badge {
+      display: inline-block;
+      padding: 4px 10px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 700;
+      margin-bottom: 8px;
+    }
+    .ok { background: rgba(34,197,94,.16); color: #86efac; }
+    .warn { background: rgba(245,158,11,.16); color: #fcd34d; }
+    .bad { background: rgba(239,68,68,.16); color: #fca5a5; }
+    .meta {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 10px;
+      margin-top: 12px;
+    }
+    .meta div {
+      background: var(--card2);
+      border: 1px solid rgba(255,255,255,.05);
+      border-radius: 14px;
+      padding: 12px;
+    }
+    .meta strong {
+      display: block;
+      font-size: 12px;
+      color: var(--muted);
+      margin-bottom: 6px;
+    }
+    .foot {
+      color: var(--muted);
+      font-size: 13px;
+      margin-top: 18px;
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>맥미니 임시 설정 현황</h1>
+    <div class="sub">기준 시각: 2026-03-26 17:11 KST · 현재까지 확인된 상태를 임시 체크리스트 형태로 정리</div>
+
+    <section class="card">
+      <span class="badge ok">기본 상태</span>
+      <h2>운영/연결 상태</h2>
+      <div class="item">
+        <input type="checkbox" checked />
+        <div class="label">
+          <div class="title">맥미니에서 붐 메모리/정체성 연속성 확보</div>
+          <div class="desc">SOUL.md, AGENTS.md, MEMORY.md, memory/ 기준으로 XPS 흐름을 이어받은 상태.</div>
+        </div>
+      </div>
+      <div class="item">
+        <input type="checkbox" checked />
+        <div class="label">
+          <div class="title">OpenClaw 게이트웨이 로컬 동작 확인</div>
+          <div class="desc">로컬 게이트웨이 구동 및 현재 텔레그램 세션 응답 가능 상태.</div>
+        </div>
+      </div>
+      <div class="item">
+        <input type="checkbox" checked />
+        <div class="label">
+          <div class="title">메모리 검색 복구 완료</div>
+          <div class="desc">Ollama `nomic-embed-text` 설치 후 memory_search 정상 동작.</div>
+        </div>
+      </div>
+      <div class="meta">
+        <div><strong>호스트</strong>kimui-Macmini.local</div>
+        <div><strong>OS</strong>macOS / Apple Silicon</div>
+        <div><strong>역할</strong>현재 생존 거점</div>
+      </div>
+    </section>
+
+    <section class="card">
+      <span class="badge ok">수면 방지</span>
+      <h2>절전/끊김 방지</h2>
+      <div class="item">
+        <input type="checkbox" checked />
+        <div class="label">
+          <div class="title">Sleep Service 원인 확인</div>
+          <div class="desc">실제 sleep 진입 원인이 `Sleep Service Back to Sleep`였던 점 확인.</div>
+        </div>
+      </div>
+      <div class="item">
+        <input type="checkbox" checked />
+        <div class="label">
+          <div class="title">pmset 절전 완화값 적용</div>
+          <div class="desc">sleep 0 / displaysleep 0 / disksleep 0 / powernap 0 / SleepServices 0 반영 확인.</div>
+        </div>
+      </div>
+      <div class="item">
+        <input type="checkbox" checked />
+        <div class="label">
+          <div class="title">재부팅 후 유지용 caffeinate LaunchAgent 설치</div>
+          <div class="desc">`~/Library/LaunchAgents/com.boom.caffeinate.plist` 로 상시 유지 설정.</div>
+        </div>
+      </div>
+    </section>
+
+    <section class="card">
+      <span class="badge ok">동기화</span>
+      <h2>XPS와 병렬 운영 준비</h2>
+      <div class="item">
+        <input type="checkbox" checked />
+        <div class="label">
+          <div class="title">메모리 5분 주기 XPS 동기화 설정</div>
+          <div class="desc">`/Users/sykim/sync-memory-to-xps.sh` + crontab으로 memory/와 MEMORY.md rsync.</div>
+        </div>
+      </div>
+      <div class="item">
+        <input type="checkbox" checked />
+        <div class="label">
+          <div class="title">병렬 운영/머지 규칙 문서화</div>
+          <div class="desc">`AGENTS.md`와 `SYNC_LOG.md`에 [MAC/gpt-5.4] 기준 기록 규칙 추가.</div>
+        </div>
+      </div>
+    </section>
+
+    <section class="card">
+      <span class="badge warn">보류</span>
+      <h2>붐4 / Docker 계열 실행 기반</h2>
+      <div class="item">
+        <input type="checkbox" />
+        <div class="label">
+          <div class="title">붐4 샌드박스 테스트 완료</div>
+          <div class="desc">아직 미완료. 기존 테스트는 `docker` 명령 부재로 시작 실패.</div>
+        </div>
+      </div>
+      <div class="item">
+        <input type="checkbox" checked />
+        <div class="label">
+          <div class="title">OrbStack 설치 완료</div>
+          <div class="desc">`brew install --cask orbstack` 완료.</div>
+        </div>
+      </div>
+      <div class="item">
+        <input type="checkbox" />
+        <div class="label">
+          <div class="title">OrbStack 초기 활성화 / docker 명령 노출</div>
+          <div class="desc">현재 `orb`, `orbctl`은 보이지만 `docker`는 아직 미노출. 앱 초기 설정 마무리 필요.</div>
+        </div>
+      </div>
+    </section>
+
+    <section class="card">
+      <span class="badge warn">보강 필요</span>
+      <h2>보안/운영 보강 항목</h2>
+      <div class="item">
+        <input type="checkbox" />
+        <div class="label">
+          <div class="title">방화벽 활성화</div>
+          <div class="desc">현재 읽기 점검 기준 방화벽 비활성 상태.</div>
+        </div>
+      </div>
+      <div class="item">
+        <input type="checkbox" checked />
+        <div class="label">
+          <div class="title">FileVault 활성화</div>
+          <div class="desc">디스크 암호화는 이미 On 상태 확인.</div>
+        </div>
+      </div>
+      <div class="item">
+        <input type="checkbox" />
+        <div class="label">
+          <div class="title">Time Machine 설정</div>
+          <div class="desc">아직 백업 대상 미구성 상태.</div>
+        </div>
+      </div>
+      <div class="item">
+        <input type="checkbox" />
+        <div class="label">
+          <div class="title">작은 모델 샌드박스/정책 보강</div>
+          <div class="desc">OpenClaw 보안 점검에서 small models sandbox 관련 경고가 있었음.</div>
+        </div>
+      </div>
+    </section>
+
+    <section class="card">
+      <span class="badge warn">참고</span>
+      <h2>현재 대외 상황 메모</h2>
+      <div class="item">
+        <input type="checkbox" />
+        <div class="label">
+          <div class="title">XPS 원격 복구 전 상태 불안정</div>
+          <div class="desc">Tailscale 생존 대비 SSH timeout, `occ.abamti.com`은 Cloudflare Tunnel 1033 확인.</div>
+        </div>
+      </div>
+      <div class="item">
+        <input type="checkbox" checked />
+        <div class="label">
+          <div class="title">정적 대시보드 계열은 별도 생존</div>
+          <div class="desc">`aidev.abamti.com/vse-dashboard/`는 Cloudflare Pages 정적 배포라 별개로 정상.</div>
+        </div>
+      </div>
+    </section>
+
+    <div class="foot">
+      임시 체크리스트라서 현장 복구 후 다시 갱신 필요. 특히 OrbStack 활성화, XPS 복구, 원격 재난대비 구성은 추후 재정리 예정.
+    </div>
+  </div>
+</body>
+</html>
