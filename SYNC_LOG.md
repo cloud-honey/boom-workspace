@@ -77,10 +77,32 @@
   - `/Users/sykim/.openclaw/workspace/SYNC_LOG.md`
 - 작업:
   - OrbStack 적합성 확인 후 `brew install --cask orbstack` 설치 완료
-  - OrbStack 앱 실행 및 PATH 확인 결과 `docker`는 아직 미노출 상태로, 초기 GUI 활성화 단계가 남아 있음을 확인
-  - 붐4 샌드박스 테스트는 `docker` 미인식으로 계속 보류
+  - 이후 OrbStack 활성화가 마무리되어 `docker version` 정상 확인
+  - Node.js 설치 상태 확인 (`v22.22.2`)
+  - 붐4 테스트를 `ollama/qwen2.5-coder:32b`로 재실행해 뉴스 PWA 목업 초안 생성 완료
   - XPS `100.116.65.86` SSH timeout 확인, `occ.abamti.com`은 Cloudflare Tunnel 1033 확인
   - `aidev.abamti.com/vse-dashboard/`는 정적 배포라 정상임을 구분 정리
   - 재난 대비용 이중 진입점/자동 재시작/전원 복구 필요성 정리
 - ⚠️ 머지 주의:
   - XPS 복구 후 같은 장애 원인(절전, SSH 미응답, 터널 미기동, OpenClaw 비자동복구)을 실제 설정 파일/서비스 기준으로 다시 문서화해야 함
+
+## 17:41 KST [XPS/sonnet] 게이트웨이 설정 오류 복구
+- 변경 파일/설정:
+  - `/home/sykim/.openclaw/openclaw.json` (`gateway.heapMb` 제거)
+  - `/home/sykim/.openclaw/openclaw.json.bak.20260326174111` 백업 생성
+- 작업:
+  - OOM 이후 투입된 `gateway.heapMb`가 현재 OpenClaw 버전에서 미지원이라 부팅 실패하는 점 확인
+  - 문제 키 제거 후 `openclaw-gateway.service` 정상 기동 확인
+- ⚠️ 머지 주의:
+  - 메모리 제한은 config 키가 아니라 systemd ExecStart의 Node 옵션 방식으로 정리해야 함
+
+## 20:43 KST [MAC/gpt-5.4] 화면 꺼짐 허용 + 잠자기만 방지로 조정
+- 변경 파일/설정:
+  - `/Users/sykim/Library/LaunchAgents/com.boom.caffeinate.plist`
+  - caffeinate 옵션: `-dimsu` → `-isu`
+- 작업:
+  - LaunchAgent unload/load로 재적용
+  - 설정 위치를 문서화: `~/Library/LaunchAgents/com.boom.caffeinate.plist`
+  - 결과적으로 화면은 꺼지고, 시스템 잠자기만 막도록 조정
+- ⚠️ 머지 주의:
+  - 맥미니 절전 정책 관련 변경은 LaunchAgent 기준으로 관리되고 있으니, 추후 다른 전원 설정과 충돌 여부 확인 필요
