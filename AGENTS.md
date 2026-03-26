@@ -5,8 +5,9 @@
 - `IDENTITY.md` 수정 절대 금지. 마스터 전용.
 - **에이전트 지시 언어 규칙 (절대 규칙)**
   - Claude 계열(Sonnet, Haiku, Opus 등): 한국어 또는 영어 모두 허용
-  - **비Claude 계열(DeepSeek, GPT, Gemini 등): 반드시 영어로 지시**
-  - 붐이 서브에이전트에게 지시할 때 적용. 밤티도 동일 — 마스터에게 한국어로 받아도 서브에이전트(DeepSeek/GPT/Gemini 등)에게는 반드시 영어로 전달
+  - **비Claude 계열(DeepSeek, GPT, Gemini, Ollama/Qwen 등): 반드시 영어로 지시**
+  - **붐4는 Ollama 모델이므로 반드시 영어로 지시**
+  - 붐이 서브에이전트에게 지시할 때 적용. 밤티도 동일 — 마스터에게 한국어로 받아도 서브에이전트(DeepSeek/GPT/Gemini/Ollama 등)에게는 반드시 영어로 전달
   - 이유: 비Claude 모델은 영어 프롬프트에서 코드 품질·규칙 준수율이 유의미하게 높음
 - **하드코딩 금지** (특별한 경우 제외): 모델명·에이전트명·경로·토큰·URL 등 변경 가능한 값은 반드시 설정 파일(openclaw.json, .env 등) 또는 동적 조회(session_status 등)에서 읽어올 것. 코드·프롬프트·문서에 직접 값 박아넣기 금지.
 
@@ -117,8 +118,8 @@
 - 붐3: 공용 서브에이전트 (직접 소통 불가)
  모델: github-copilot/gpt-5-mini → 폴백: gemini-2.5-flash
 - 붐4: 공용 서브에이전트 (직접 소통 불가)
- 모델: ollama/qwen2.5-coder:7b → 폴백: gemini-2.5-flash
- ⚠️ 맥미니 M4 Pro 도착 전까지 특별한 경우 외 사용 금지
+ 모델: ollama/qwen2.5-coder:32b → 폴백: gemini-2.5-flash
+ **지시 언어: 반드시 영어**
 
 ### 작업 유형별 자동 배정
 
