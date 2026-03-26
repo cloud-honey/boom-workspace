@@ -70,3 +70,17 @@
   - 붐4 모델 설명을 `ollama/qwen2.5-coder:32b` 기준으로 업데이트
 - ⚠️ 머지 주의:
   - XPS 쪽 AGENTS.md에도 같은 규칙이 이미 부분적으로 있을 수 있으니, 머지 시 중복 문장과 모델 버전 표기를 함께 정리할 것
+
+## 16:17 KST [MAC/gpt-5.4] OrbStack 설치 및 XPS 장애 진단 기록
+- 변경 파일/설정:
+  - `/Users/sykim/.openclaw/workspace/memory/2026-03-26.md`
+  - `/Users/sykim/.openclaw/workspace/SYNC_LOG.md`
+- 작업:
+  - OrbStack 적합성 확인 후 `brew install --cask orbstack` 설치 완료
+  - OrbStack 앱 실행 및 PATH 확인 결과 `docker`는 아직 미노출 상태로, 초기 GUI 활성화 단계가 남아 있음을 확인
+  - 붐4 샌드박스 테스트는 `docker` 미인식으로 계속 보류
+  - XPS `100.116.65.86` SSH timeout 확인, `occ.abamti.com`은 Cloudflare Tunnel 1033 확인
+  - `aidev.abamti.com/vse-dashboard/`는 정적 배포라 정상임을 구분 정리
+  - 재난 대비용 이중 진입점/자동 재시작/전원 복구 필요성 정리
+- ⚠️ 머지 주의:
+  - XPS 복구 후 같은 장애 원인(절전, SSH 미응답, 터널 미기동, OpenClaw 비자동복구)을 실제 설정 파일/서비스 기준으로 다시 문서화해야 함
