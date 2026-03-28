@@ -24,11 +24,11 @@
 - MEMORY.md는 그룹챗/공유 컨텍스트에서 절대 로드 금지
 
 ## 파일 경로 공유 규칙 (붐·밤티 공통)
-- **워크스페이스 절대 경로:** `/home/sykim/.openclaw/workspace/`
-- **일일 메모리:** `/home/sykim/.openclaw/workspace/memory/YYYY-MM-DD.md`
-- **대시보드:** `/home/sykim/.openclaw/workspace/openclaw-dashboard/`
-- **홈페이지 프로젝트:** `/home/sykim/.openclaw/workspace/mrtrading-project2/sinan-a-v2/`
-- **pj.abamti.com 서빙 경로:** `/home/sykim/.openclaw/workspace/openclaw-dashboard/dist/sinan-preview/`
+- **워크스페이스 절대 경로:** `/Users/sykim/.openclaw/workspace/`
+- **일일 메모리:** `/Users/sykim/.openclaw/workspace/memory/YYYY-MM-DD.md`
+- **대시보드:** `/Users/sykim/workspace/openclaw-dashboard/`
+- **홈페이지 프로젝트:** `/Users/sykim/workspace/mrtrading-project2/sinan-a-v2/`
+- **pj.abamti.com 서빙 경로:** `/Users/sykim/workspace/openclaw-dashboard/dist/sinan-preview/`
 - ⚠️ `~/workspace/` (틸다 경로) 사용 금지 — `.openclaw/workspace/` 절대 경로만 사용
 
 ## 밤티 작업 기록 규칙
@@ -116,9 +116,9 @@
 - 붐2: 공용 서브에이전트 (직접 소통 불가)
  모델: deepseek/deepseek-chat → 폴백: gemini-2.5-flash
 - 붐3: 공용 서브에이전트 (직접 소통 불가)
- 모델: github-copilot/gpt-5-mini → 폴백: gemini-2.5-flash
+ 모델: google/gemini-2.5-flash → 폴백: gemini-2.5-flash-lite
 - 붐4: 공용 서브에이전트 (직접 소통 불가)
- 모델: ollama/qwen2.5-coder:32b → 폴백: gemini-2.5-flash
+ 모델: ollama/qwen3-coder:30b-a3b-q4_K_M (sandbox 없음)
  **지시 언어: 반드시 영어**
 
 ### 작업 유형별 자동 배정
@@ -137,12 +137,13 @@
 ### 코딩 에스컬레이션 흐름
 요청 접수
  ↓
+붐4 (qwen3-coder, 로컬) 최대 1회 시도
+ ↓ 실패 또는 복잡한 작업
 붐2 (DeepSeek) 최대 2회 시도
  ↓ 실패
 붐(나) 최종 처리
 ※ 에스컬레이션 시 이전 시도 내용 제외,
  원래 요청만 새로 전달
-※ 맥미니 도착 후: 붐4 → 붐2 → 붐 순서로 변경
 
 ### 붐(나) 직행 조건
 - 한국어 기획 맥락이 핵심인 작업
@@ -185,25 +186,24 @@
 - **`dist --project-name=ai-devteam-outputs` 절대 금지** — boom-master-dashboard React 빌드가 aidev.abamti.com 전체를 덮어씀
 - CF Pages 프로젝트별 서빙 구조는 MEMORY.md "배포 작업 전 필수 확인" 섹션 참조
 
-## 양쪽 운영 기간 동기화 규칙 (XPS ↔ 맥미니 병렬 운영 중)
-- XPS(붐/sonnet)와 맥미니(붐/gpt-5.4)가 동시에 운영 중
+## 양쪽 운영 동기화 규칙 (맥미니 메인 / XPS 붐스 분리 운영)
+- **맥미니:** 붐(sonnet) — 이 채널(@abamtibot)
+- **XPS:** 붐스(Booms, sonnet) — 별도 텔레그램 봇 담당
 - 맥미니 memory → XPS로 5분마다 자동 rsync 중
-- **나중에 머지 예정 — 머지에 필요한 모든 작업은 `SYNC_LOG.md`에 반드시 기록**
+- **변경사항은 `SYNC_LOG.md`에 반드시 기록**
 - 기록 형식:
   ```
-  ## HH:MM KST [XPS/sonnet 또는 MAC/gpt-5.4] 작업명
+  ## HH:MM KST [MAC/sonnet 또는 XPS/booms] 작업명
   - 변경 파일/설정: (경로 및 내용)
   - ⚠️ 머지 주의: (있을 경우만)
   ```
 - openclaw.json 변경, 크리덴셜 추가, 설정 변경 시 반드시 기록
 
-### 맥미니 운영 규칙 5줄 요약 (2026-03-26 13:12 KST 추가)
-- 추가자: 붐(Boom)
-- 추가 이유: XPS ↔ 맥미니 병렬 운영 중 메모리 동기화는 유지하면서 git/설정 머지 충돌을 줄이기 위해
-1. 맥미니 작업은 항상 `[MAC/gpt-5.4]` 태그로 기록
-2. XPS 작업은 `[XPS/sonnet]` 태그 유지
+### 운영 원칙
+1. 맥미니 작업은 항상 `[MAC/sonnet]` 태그로 기록
+2. XPS 작업은 `[XPS/booms]` 태그 유지
 3. 메모리(`memory/`, `MEMORY.md`)는 맥미니 → XPS로 5분마다 자동 동기화
-4. 프로젝트 git은 메모리와 별개로 관리 — 기존 XPS 프로젝트는 직접 섞지 말고 Git 기준으로만 머지
+4. 프로젝트 git은 메모리와 별개로 관리 — Git 기준으로만 머지
 5. 양쪽 병행 운영 중 변경사항은 반드시 `SYNC_LOG.md`에 기록
 
 ## 작업 히스토리 규칙 (필수)
