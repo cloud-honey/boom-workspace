@@ -1,18 +1,40 @@
 # MEMORY.md — 핵심 요약 (붐1 장기 메모리)
 
+## 2026-03-28 18:00 KST 오후 일일 리포트 생성 완료
+- 크론 자동 실행: daily-reporter-18:00-KST (jobId: 82a58f09-d662-4ff6-a440-2e9a34ab4c15)
+- 생성 에이전트: 붐2(deepseek/deepseek-chat)
+- 리포트 파일: 
+  - HTML: /Users/sykim/workspace/openclaw-dashboard/reports/2026-03-28-afternoon.html
+  - MD: /Users/sykim/workspace/openclaw-dashboard/reports/2026-03-28-afternoon.md
+- 주요 내용: 날씨(14.6°C), 시장(코스피 5,438.87), 경제(한국은행 금리 인상), AI(OpenAI 상장 준비), 반도체(삼성전자 HBM4)
+- 텔레그램 발송 완료 (마스터 47980209)
+- index.json 업데이트 완료
+
 ## 핵심 정보
 - 이름: 승영 김 (마스터)
 - 언어: 한국어
 - 위치: 오류2동 (천왕동), Seoul · lat 37.4956, lon 126.8900
 - 성향: 비개발자 · 모바일 우선 · 자동화 선호
 
+## 2026-03-28 저녁 맥미니 정리 작업
+- SOUL.md / AGENTS.md / TOOLS.md 맥미니 기준 전면 정리
+- 붐4 역할 QA/테스트로 변경, 모델명 하드코딩 제거
+- dashboard.abamti.com XPS DevTeam 코드 제거 + 날씨 기온 null 버그 수정
+- 붐4 모델 qwen3-coder:30b-a3b-q4_K_M 확정, 토큰 속도 33.6 t/s
+- VSE Sprint 6 QA 완료 (붐4, 8태스크 전체 PASS)
+- 붐스/붐 분리 확정: XPS→붐스, 맥미니→붐(@abamtibot)
+- rsync 크론 중단 (맥미니 메인 전환 완료)
+- 작업 시작 전 컨펌 규칙 추가 (담당/모델/난이도/예상시간)
+- 게이트웨이 재시작 반드시 컨펌 후 실행 규칙 추가
+
 ## 에이전트 구조
 ### 메인 그룹 (게이트웨이 18789)
-- **붐**: claude-sonnet-4.6 — 마스터 메인 파트너
-- **밤티**: claude-haiku-4-5 (폴백: gemini-2.5-flash) — 동급 협업
+- **붐**: claude-sonnet-4-6 — 마스터 메인 파트너 (@abamtibot, 맥미니)
+- **붐스(Booms)**: claude-sonnet-4-6 — XPS 전담, 별도 텔레그램 봇
+- **밤티**: openai-codex/gpt-5.4 — 오래 걸리는 반복 작업
 - **붐2**: deepseek/deepseek-chat — 복잡한 코딩
-- **붐3**: google/gemini-2.5-flash — QA·단순작업
-- **붐4**: ollama/qwen3-coder:30b-a3b-q4_K_M — 로컬 코딩 (맥미니, sandbox 없음)
+- **붐3**: google/gemini-2.5-flash — 단순 수정, 문서, 자동화
+- **붐4**: ollama/qwen3-coder:30b-a3b-q4_K_M — QA/테스트 (맥미니, sandbox 없음, 33.6 t/s)
 
 ### DevTeam 그룹 (게이트웨이 18790, PM2: devteam-gateway)
 - 접속: Boomti_bot → devteam-bot(PM2) → 게이트웨이(18790)
@@ -84,6 +106,14 @@
 - DevTeam PM 워크스페이스: `/home/sykim/.openclaw2/workspace-pm/`
 - DevTeam subagents.maxConcurrent: 1 (순차 실행)
 - bot_server.py 타임아웃: 3600초
+
+## 일일 리포트 시스템 (2026-03-28 업데이트)
+- 크론: daily-reporter-07:30-KST (jobId: d98aa0fc-8089-43ee-92d3-67061b436b91)
+- 실행 시간: 매일 07:30 KST 자동 실행
+- 생성 에이전트: 붐2(deepseek/deepseek-chat)
+- 데이터 수집: KMA 날씨 API, Brave Search 시장/뉴스/AI/반도체 정보
+- 출력: HTML 리포트, 마크다운 리포트, index.json 업데이트, 텔레그램 발송
+- 리포트 URL: https://dashboard.abamti.com/reports/YYYY-MM-DD.html
 
 ## 필수 규칙
 1) openclaw.json 수정 전 백업 필수
