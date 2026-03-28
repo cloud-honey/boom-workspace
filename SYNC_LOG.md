@@ -106,3 +106,33 @@
   - 결과적으로 화면은 꺼지고, 시스템 잠자기만 막도록 조정
 - ⚠️ 머지 주의:
   - 맥미니 절전 정책 관련 변경은 LaunchAgent 기준으로 관리되고 있으니, 추후 다른 전원 설정과 충돌 여부 확인 필요
+
+## 11:30 KST [MAC/gpt-5.4] 붐4 Modelfile 생성 및 운영 이름 고정
+- 변경 파일/설정:
+  - `/Users/sykim/.openclaw/workspace/ollama-models/boom4/Modelfile`
+  - Ollama 커스텀 모델 `boom4` 생성 (`FROM qwen2.5-coder:32b`)
+- 작업:
+  - 붐4 전용 system 프롬프트/파라미터 확정
+  - 규칙 반영: 영어 지시 엄수, 전체 구현 필수, placeholder 금지, 코드 주석 필수, 하드코딩 금지, 관련 파일 동기 수정, 메모리 효율/누수 방지
+  - 파라미터 설정: `temperature 0.2`, `top_p 0.9`, `num_ctx 32768`, `num_predict 8192`
+  - `ollama create boom4 -f ...` 실행 후 `ollama run boom4` 테스트 성공
+- ⚠️ 머지 주의:
+  - 이후 원본 로컬 모델을 바꾸더라도 운영 이름은 `boom4`로 유지하고, Modelfile의 `FROM`만 바꿔 재생성하는 방식으로 관리할 것
+
+## 14:50 KST [MAC/gpt-5.4] XPS 메모리 동기화 복구 및 별도 파일 전송
+- 변경 파일/설정:
+  - `/Users/sykim/sync-memory-to-xps.sh`
+  - `/Users/sykim/.openclaw/workspace/memory/2026-03-27.md`
+- 작업:
+  - XPS SSH 현재 연결 정상 확인 후 수동 동기화 성공 검증
+  - 크론 환경 재현 테스트(`env -i ... /bin/bash /Users/sykim/sync-memory-to-xps.sh`)도 성공 확인
+  - sync 스크립트에 절대경로(`/usr/bin/rsync`, `/usr/bin/ssh`) 및 비대화형 ssh 옵션 추가
+  - 기존 `--update` 유지로 원격 최신본 덮어쓰기 방지
+  - `2026-03-26.md`는 XPS본과 맥미니본이 달라 자동 병합 대신 별도 파일 `/home/sykim/.openclaw/workspace/memory/2026-03-26.macmini-sync-20260327.md`로 안전 전송
+- ⚠️ 머지 주의:
+  - XPS의 `memory/2026-03-26.md`와 맥미니 별도 전송본을 나중에 수동 비교 머지해야 함
+  - sync 스크립트 보강 내용은 XPS 측 동일 스크립트와 중복/차이 확인 후 정리할 것
+
+## 22:04 KST [MAC/sonnet] 맥미니→XPS 메모리 rsync 중단
+- 변경 파일/설정: crontab (*/5 * * * * sync-memory-to-xps.sh 제거)
+- 이유: 맥미니 메인 전환 완료, XPS 붐스 분리 운영으로 더 이상 동기화 불필요
