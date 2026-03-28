@@ -35,6 +35,8 @@
 - **붐2**: deepseek/deepseek-chat — 복잡한 코딩
 - **붐3**: google/gemini-2.5-flash — 단순 수정, 문서, 자동화
 - **붐4**: ollama/qwen3-coder:30b-a3b-q4_K_M — QA/테스트 (맥미니, sandbox 없음, 33.6 t/s)
+  - 성능 지표 파일: `workspace/reports/boom4-model-performance.md` (모델 교체 시 업데이트)
+  - 모델 변경 시: Modelfile FROM 수정 → `ollama create boom4 -f Modelfile` (게이트웨이 재시작 불필요)
 
 ### DevTeam 그룹 (게이트웨이 18790, PM2: devteam-gateway)
 - 접속: Boomti_bot → devteam-bot(PM2) → 게이트웨이(18790)
