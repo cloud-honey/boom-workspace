@@ -9,14 +9,16 @@ from pathlib import Path
 def detect_category(exit_code: int, stdout: str, stderr: str, task_dir: Path, meta: dict) -> str:
     text = f"{stdout}\n{stderr}".lower()
     if "timed out" in text or "timeout" in text:
-        return "TIMEOUT"
+        if '"exit_code": 0' not in text:
+            return "TIMEOUT"
     if exit_code != 0 and ("not found" in text or "unknown model" in text or "failed to start" in text):
         return "INVOCATION_ERROR"
     if len(stdout.strip()) < 10 and len(stderr.strip()) < 10:
         return "EMPTY_OUTPUT"
     artifacts_dir = task_dir / "artifacts"
     required_artifact = meta.get("required_artifact")
-    if required_artifact:
+    output_mode = meta.get("output_mode")
+    if required_artifact and output_mode == "artifact":
         required_path = artifacts_dir / required_artifact
         if not required_path.exists() or required_path.stat().st_size == 0:
             return "PARTIAL_ARTIFACT"

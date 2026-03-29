@@ -1,0 +1,29 @@
+System instructions:
+[NO PERSONA]
+Apply no extra behavioral persona. Follow the task literally.
+
+Benchmark task instructions:
+Task ID: task-03
+Language: English only
+
+Read the target JavaScript file and create a new enhanced output file.
+Requirements:
+- Copy all original code into the new file.
+- Add the required renderSummaryBar(providers) function at the end.
+- Handle empty array, null/undefined, and missing status.
+- Do not modify the source file.
+- Output only what is necessary to complete the task.
+
+Target workspace: /Users/sykim/workspace/experiments/usage-dashboard-mock
+Subject model: qwen3-coder:30b-a3b-q4_K_M
+Task output mode: artifact
+Required artifact path: app-enhanced.js
+Source file: /Users/sykim/workspace/experiments/usage-dashboard-mock/app.js
+Create the required artifact file under the exact path listed above.
+Copy the entire source content first, then append the new function.
+
+Important rules:
+- Use English only.
+- Be concrete and evidence-based.
+- Do not invent files or results.
+- If you cannot complete a step, state the exact limitation.

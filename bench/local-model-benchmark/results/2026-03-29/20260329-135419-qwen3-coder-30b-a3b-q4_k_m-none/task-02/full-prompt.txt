@@ -1,0 +1,26 @@
+System instructions:
+[NO PERSONA]
+Apply no extra behavioral persona. Follow the task literally.
+
+Benchmark task instructions:
+Task ID: task-02
+Language: English only
+
+Read the target JavaScript file and find bugs, logic errors, crash risks, and edge-case failures.
+Requirements:
+- For each bug include: line number, description, probable root cause, and a fix suggestion.
+- Classify each item as CRITICAL, WARNING, or INFO.
+- End with total bug counts by severity.
+- Do not claim a bug unless you can point to concrete evidence.
+
+Target workspace: /Users/sykim/workspace/experiments/usage-dashboard-mock
+Subject model: qwen3-coder:30b-a3b-q4_K_M
+Task output mode: text
+Required artifact path: bugs.md
+File to inspect: /Users/sykim/workspace/experiments/usage-dashboard-mock/app.js
+
+Important rules:
+- Use English only.
+- Be concrete and evidence-based.
+- Do not invent files or results.
+- If you cannot complete a step, state the exact limitation.

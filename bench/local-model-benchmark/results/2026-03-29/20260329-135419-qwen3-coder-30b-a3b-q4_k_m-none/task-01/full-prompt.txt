@@ -1,0 +1,26 @@
+System instructions:
+[NO PERSONA]
+Apply no extra behavioral persona. Follow the task literally.
+
+Benchmark task instructions:
+Task ID: task-01
+Language: English only
+
+Read the target files and produce a code quality review.
+Requirements:
+- Evaluate structure, readability, maintainability, CSS organization, and JavaScript quality.
+- List specific issues with file name and line number when possible.
+- End with a numeric score from 1 to 10 and a short justification.
+- Do not invent files or line numbers.
+
+Target workspace: /Users/sykim/workspace/experiments/usage-dashboard-mock
+Subject model: qwen3-coder:30b-a3b-q4_K_M
+Task output mode: text
+Required artifact path: review.md
+Files to inspect: /Users/sykim/workspace/experiments/usage-dashboard-mock/index.html and /Users/sykim/workspace/experiments/usage-dashboard-mock/app.js
+
+Important rules:
+- Use English only.
+- Be concrete and evidence-based.
+- Do not invent files or results.
+- If you cannot complete a step, state the exact limitation.

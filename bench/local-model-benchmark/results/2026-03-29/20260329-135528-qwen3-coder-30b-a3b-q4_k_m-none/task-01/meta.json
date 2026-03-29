@@ -1,0 +1,15 @@
+{
+  "task_id": "task-01",
+  "subject_model": "qwen3-coder:30b-a3b-q4_K_M",
+  "subject_id": "qwen3-coder-30b-a3b-q4_k_m",
+  "persona_id": "none",
+  "persona_enabled": false,
+  "workspace_target": "/Users/sykim/workspace/experiments/usage-dashboard-mock",
+  "prompt_version": "v1",
+  "required_artifact": "review.md",
+  "output_mode": "text",
+  "exit_code": 0,
+  "status": "ok",
+  "elapsed_ms": 8402,
+  "timestamp": "2026-03-29T13:55:36+09:00"
+}
