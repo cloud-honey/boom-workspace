@@ -207,3 +207,4 @@
 - **deepseek-r1:32b**: 9.1 t/s (단독 GPU), 70b보다 2배 빠름 — 벤치마크 진행 중
 - **CF Tunnel**: ha.abamti.com 추가 (cfut 토큰 필요 — MEMORY에 저장 필요)
 - **CF cfut 토큰**: cfut_tKJLAKpbXgsqiOEUt729P426qKgrs0CnTpfMNjbv82cfbac4 (Zero Trust 편집 권한)
+- **deepseek-r1:32b**: 9.1 t/s (단독 GPU), 70b보다 2배 빠름 — 벤치마크 진행 중
