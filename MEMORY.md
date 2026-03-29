@@ -44,6 +44,13 @@
 - arch 비활성 — PM이 설계 직접 처리
 - 에스컬레이션: `reports/devteam-escalation.md` (PENDING → 붐 heartbeat 감지)
 
+## XPS 노드 연결 (2026-03-29 확정)
+- XPS → Tailscale → 맥미니 게이트웨이(18789) 노드로 연결
+- systemd 서비스: openclaw-node.service (자동 시작)
+- 어디서든 인터넷만 되면 자동 재연결
+- 상태 확인: `openclaw nodes status` / `openclaw nodes invoke --node "XPS Node" --command system.run --params '{"command":["/home/sykim/xps-status.sh"]}'`
+- HEARTBEAT에 XPS 게이트웨이 다운 감지 추가됨
+
 ## 운영 인프라
 - 대시보드: React+Express (5173), proxy: real_openclaw_proxy.js → 5175
 - 외부: Cloudflare Quick Tunnel (재시작 시 URL 변경)
