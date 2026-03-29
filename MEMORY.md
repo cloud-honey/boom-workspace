@@ -197,3 +197,13 @@
 ## DeepSeek 모델명 오기입 패턴
 - DeepSeek이 리뷰어 필드에 "Claude" 또는 "deepseek (AI)"로 오기입하는 경향 있음
 - 마스터가 직접 수정 후 전달하거나 붐이 수신 시 파일명으로 정정
+
+## 2026-03-29 주요 작업 요약
+- **HAOS VM** (UTM): IP 192.168.219.177, 외부 접속: https://ha.abamti.com ✅
+- **Core HA (PM2)** 제거 완료 — Python venv 삭제
+- **XPS 노드** 맥미니 게이트웨이에 연결 (Tailscale, systemd 자동 시작)
+- **데일리 리포트** 시장지수 Yahoo Finance API로 교체 (실시간 정확)
+- **붐4 벤치마크**: qwen3-coder:30b 46 t/s / 25/30 PASS — 최선 모델 확정
+- **deepseek-r1:32b**: 9.1 t/s (단독 GPU), 70b보다 2배 빠름 — 벤치마크 진행 중
+- **CF Tunnel**: ha.abamti.com 추가 (cfut 토큰 필요 — MEMORY에 저장 필요)
+- **CF cfut 토큰**: cfut_tKJLAKpbXgsqiOEUt729P426qKgrs0CnTpfMNjbv82cfbac4 (Zero Trust 편집 권한)
