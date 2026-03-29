@@ -1,0 +1,32 @@
+{
+  "version": "1.0",
+  "tasks": {
+    "task-01": {
+      "max_score": 10,
+      "criteria": [
+        "instruction_following",
+        "specificity",
+        "evidence_quality",
+        "technical_accuracy"
+      ]
+    },
+    "task-02": {
+      "max_score": 10,
+      "criteria": [
+        "bug_count_quality",
+        "severity_accuracy",
+        "root_cause_quality",
+        "fix_quality"
+      ]
+    },
+    "task-03": {
+      "max_score": 10,
+      "criteria": [
+        "artifact_created",
+        "source_preservation",
+        "function_correctness",
+        "edge_case_handling"
+      ]
+    }
+  }
+}

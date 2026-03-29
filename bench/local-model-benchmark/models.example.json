@@ -1,0 +1,29 @@
+{
+  "subjects": [
+    {
+      "id": "qwen3-coder-30b",
+      "model": "qwen3-coder:30b-a3b-q4_K_M",
+      "role": "lightweight"
+    },
+    {
+      "id": "deepseek-r1-32b",
+      "model": "deepseek-r1:32b",
+      "role": "advanced"
+    },
+    {
+      "id": "deepseek-r1-70b",
+      "model": "deepseek-r1:70b",
+      "role": "advanced"
+    }
+  ],
+  "judges": [
+    {
+      "id": "sonnet",
+      "model": "anthropic/claude-sonnet-4-6"
+    }
+  ],
+  "defaults": {
+    "timeout_seconds": 600,
+    "workspace_target": "/Users/sykim/workspace/experiments/usage-dashboard-mock"
+  }
+}
