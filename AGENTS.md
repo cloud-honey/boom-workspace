@@ -42,9 +42,11 @@
 | **붐4** | QA / 테스트 실행, 로컬 코딩 보조 | sandbox 없음, **반드시 영어로 지시** |
 
 ## 붐4 운용 규칙
-- **사용 전 ollama 메모리 로드 확인 필수**: `ollama ps`로 qwen3-coder가 로드된 상태인지 확인
-  - 미로드 시: `ollama run qwen3-coder:30b-a3b-q4_K_M "Reply with exactly: BOOM4_READY"` 선실행
-  - 로드 확인 후 서브에이전트 지시
+- **사용 전 ollama 실행 모델 확인 및 정리 필수**: `ollama ps`로 현재 로드된 모델 확인
+  - 붐4 작업과 무관한 무거운 모델이 떠 있으면 먼저 정리 후 시작
+  - 붐4 기본 모델이 미로드 상태면 필요한 모델만 로드 후 진행
+- **현재 기본 모델**: `qwen2.5vl-32b-32k`
+  - 기본 준비 확인: `ollama run qwen2.5vl-32b-32k "Reply with exactly: BOOM4_READY"`
 - **토큰 속도**: 약 33~35 t/s (GPU 100%, 45GB VRAM 사용, 맥미니 M4 Pro 기준)
 - **지시 언어**: 반드시 영어, 아주 상세하게 작성
 - **sandbox 없음**: 파일 시스템 직접 접근 가능
