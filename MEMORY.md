@@ -210,3 +210,12 @@
 - **CF Tunnel**: ha.abamti.com 추가 (cfut 토큰 필요 — MEMORY에 저장 필요)
 - **CF cfut 토큰**: cfut_tKJLAKpbXgsqiOEUt729P426qKgrs0CnTpfMNjbv82cfbac4 (Zero Trust 편집 권한)
 - **deepseek-r1:32b**: 9.1 t/s (단독 GPU), 70b보다 2배 빠름 — 벤치마크 진행 중
+
+## 2026-03-30 Ollama WebUI + 외부 주소 연결 완료
+- Open WebUI 설치 경로: `/Users/sykim/workspace/open-webui`
+- 실행 방식: Python 3.12 venv + launchctl 자동 실행
+- 로컬 접속: `http://127.0.0.1:8081`
+- 외부 접속: `https://ollama.abamti.com`
+- cloudflared ingress 추가 완료: `ollama.abamti.com -> http://localhost:8081`
+- 붐4 시작 규칙 변경: 작업 전 `ollama ps` 확인, 무관한 무거운 모델 정리 후 진행
+- 붐4 기본 모델 준비 확인 기준: `qwen2.5vl-32b-32k`
