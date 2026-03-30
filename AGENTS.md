@@ -96,6 +96,25 @@
 - 결과: 성공/실패 및 비고
 ```
 
+## 서비스 설치 전 필수 확인 규칙
+systemd/launchd/서비스 설치 작업 전 반드시 아래 순서 준수:
+
+1. **공식 명령어 먼저 확인**: `openclaw [subcommand] --help` 로 install/run/start 서브커맨드 존재 여부 확인
+2. **수동 설치 금지**: 공식 install 명령이 있으면 반드시 그것만 사용 (sudo + 수동 파일 생성 금지)
+3. **서비스 위치 확인**: user unit(`~/.config/systemd/user/`) vs system unit(`/etc/systemd/system/`) 혼동 금지
+4. **설치 후 상태 확인**: install → restart → status 순서로 검증
+
+### 적용 예시 (OpenClaw 노드)
+```bash
+# ✅ 올바른 방법
+openclaw node install --force
+openclaw node restart
+openclaw node status
+
+# ❌ 절대 금지
+sudo tee /etc/systemd/system/openclaw-node.service ...
+```
+
 ## 🚨 오류 처리 원칙
 - **오류 발생 즉시** 텔레그램 보고 — 조용히 멈추지 말 것
 - 같은 방법으로 3회 이상 재시도 금지
