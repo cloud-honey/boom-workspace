@@ -230,7 +230,12 @@
 - **cert**: `/Users/sykim/.cloudflared/cert.pem`
 - **PM2**: `cloudflared` (config-local.yml 사용)
 - **ingress 추가 방법**: config-local.yml 수정 → `pm2 restart cloudflared`
-- 기존 터널 `17a5a6f2`, `65c96982`는 폐기 (원격 관리 모드, 로컬 config 무시 문제)lare 서버에서 설정 캐시 → 로컬 config 변경 무시
+- 기존 터널 `17a5a6f2`, `65c96982`는 폐기 (원격 관리 모드, 로컬 config 무시 문제)
+
+## 2026-03-31 하트비트 비활성화
+- **설정**: `agents.defaults.heartbeat.every: "0"` (openclaw.json)
+- **이유**: 토큰 누수 — 30분마다 ~57k 토큰 소모 (하루 ~2.7M), 진행 작업 없어도 계속 실행
+- **재활성화**: `every: "30m"` → config.patch → 게이트웨이 재시작lare 서버에서 설정 캐시 → 로컬 config 변경 무시
 - **해결책**: Node.js 프록시 서버 생성 (포트 3101, `0.0.0.0` 바인딩)
 - **프록시 파일**: `/Users/sykim/workspace/openclaw-dashboard/paperclip-proxy.js`
 - **cloudflared 설정**: `paperclip.abamti.com -> http://localhost:3101` (config-new.yml)
