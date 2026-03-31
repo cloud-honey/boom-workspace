@@ -1,0 +1,121 @@
+Generate today’s daily report in Korean.
+
+Critical goal:
+Produce a factually reliable report using the existing template/layout. Do not redesign the HTML. Only fill verified content.
+
+Hard requirements:
+- Use these exact absolute paths. Do not replace them.
+- Workspace/report project path: /Users/sykim/workspace/openclaw-dashboard
+- Reports path: /Users/sykim/workspace/openclaw-dashboard/reports
+- Env file path: /Users/sykim/workspace/openclaw-dashboard/.env
+- Template reference path: /Users/sykim/workspace/openclaw-dashboard/reports/template.html
+
+Step 1 — Model check
+Call session_status first and extract the actual model as ACTUAL_MODEL.
+Use ACTUAL_MODEL in generation info.
+
+Step 2 — Preserve layout
+Read the template or latest afternoon report only to preserve:
+- section order
+- structure
+- styling
+- layout
+Do not redesign.
+
+Step 3 — Weather (KMA) — use this exact command block
+Run this exact command without changing the paths:
+
+KMA_KEY=$(grep "^KMA_API_KEY=" /Users/sykim/workspace/openclaw-dashboard/.env | cut -d= -f2-)
+DATE=$(date +%Y%m%d)
+curl -s "http://apis.data.go.kr/1360000/VilageFcstInfoService_2.0/getUltraSrtNcst?serviceKey=${KMA_KEY}&numOfRows=8&pageNo=1&dataType=JSON&base_date=${DATE}&base_time=2000&nx=57&ny=124"
+curl -s "http://apis.data.go.kr/1360000/VilageFcstInfoService_2.0/getVilageFcst?serviceKey=${KMA_KEY}&numOfRows=300&pageNo=1&dataType=JSON&base_date=${DATE}&base_time=1700&nx=57&ny=124"
+
+Extract only these fields:
+- T1H: current temperature
+- REH: humidity
+- WSD: wind speed
+- SKY + PTY: weather condition
+- TMN: today min
+- TMX: today max
+- POP: precipitation probability
+
+If TMN/TMX are not present in the selected forecast rows, search other rows from the same response before declaring failure.
+Only fall back if KMA truly fails.
+
+Step 4 — Market (Yahoo Finance) — use this exact command block
+Run this exact command without changing it:
+
+python3 << 'PYEOF'
+import urllib.request, json, datetime
+SYMBOLS = {
+    "코스피": "^KS11",
+    "S&P 500": "^GSPC",
+    "나스닥": "^IXIC",
+    "다우존스": "^DJI",
+    "WTI": "CL=F"
+}
+HDRS = {"User-Agent": "Mozilla/5.0"}
+for name, sym in SYMBOLS.items():
+    url = f"https://query1.finance.yahoo.com/v8/finance/chart/{sym}?interval=1d&range=5d"
+    req = urllib.request.Request(url, headers=HDRS)
+    with urllib.request.urlopen(req, timeout=15) as r:
+        d = json.load(r)
+    meta = d["chart"]["result"][0]["meta"]
+    price = meta["regularMarketPrice"]
+    prev = meta.get("chartPreviousClose") or meta.get("previousClose", price)
+    chg = round((price - prev) / prev * 100, 2) if prev else 0
+    print(f"{name}\t{price}\t{chg}")
+print("KST\t"+datetime.datetime.now(datetime.timezone(datetime.timedelta(hours=9))).strftime('%H:%M'))
+PYEOF
+
+Use the returned values directly.
+Only use fallback if this exact block truly fails.
+
+Step 5 — News verification
+Collect separate candidates for:
+- Economy
+- AI
+- Semiconductor
+
+Rules:
+- Use targeted search queries
+- Reject homepage, section page, portal aggregation, search hub, YouTube, blog, cafe, forum, community
+- Only use individual article URLs
+- Prefer 48-hour freshness
+- Do not use snippets alone
+- Verify article content before inclusion when possible
+- Max 2 items per section
+- If evidence is weak, omit the item
+
+AI-specific rule:
+- Do not fill AI with generic trend essays or weak sites.
+- If strong current AI articles are insufficient, keep the AI section shorter.
+
+Step 6 — Writing rules
+Write in Korean.
+Be concise, factual, and calm.
+Do not exaggerate.
+Do not guess.
+Do not pad weak sections.
+
+Section order:
+1. Weather
+2. Market
+3. Economy News
+4. AI Trends
+5. Semiconductor Issues
+6. Risk Level
+7. Generation Info
+
+Step 7 — Self-check before writing
+Confirm all of the following:
+- Existing layout/template preserved
+- KMA command used with the exact path above
+- Yahoo command used with the exact block above
+- Every news item is from an individual article URL
+- Weak items removed
+- No guessed claim remains
+- No stale repeated item added just to fill space
+
+Final rule:
+Trust over quantity. If unsure, leave it out.

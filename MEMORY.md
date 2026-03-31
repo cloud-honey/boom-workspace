@@ -219,3 +219,25 @@
 - cloudflared ingress 추가 완료: `ollama.abamti.com -> http://localhost:8081`
 - 붐4 시작 규칙 변경: 작업 전 `ollama ps` 확인, 무관한 무거운 모델 정리 후 진행
 - 붐4 기본 모델 준비 확인 기준: `qwen2.5vl-32b-32k`
+
+## 2026-03-31 Cloudflare Tunnel 근본 정리 + paperclip 외부 접속
+- **paperclip 설치**: `/Users/sykim/.paperclip/instances/default/`, 포트 3100
+- **프록시**: 포트 3101 (`paperclip-proxy.js`, `0.0.0.0` 바인딩)
+- **근본 문제 해결**: 원격 관리 터널 → 로컬 관리 터널로 교체
+- **새 터널**: `abamti-local` (ID: `7328e0f3-f992-4e84-b28a-4073be403823`)
+- **config**: `/Users/sykim/workspace/openclaw-dashboard/cloudflared/config-local.yml`
+- **credentials**: `/Users/sykim/.cloudflared/7328e0f3-f992-4e84-b28a-4073be403823.json`
+- **cert**: `/Users/sykim/.cloudflared/cert.pem`
+- **PM2**: `cloudflared` (config-local.yml 사용)
+- **ingress 추가 방법**: config-local.yml 수정 → `pm2 restart cloudflared`
+- 기존 터널 `17a5a6f2`, `65c96982`는 폐기 (원격 관리 모드, 로컬 config 무시 문제)lare 서버에서 설정 캐시 → 로컬 config 변경 무시
+- **해결책**: Node.js 프록시 서버 생성 (포트 3101, `0.0.0.0` 바인딩)
+- **프록시 파일**: `/Users/sykim/workspace/openclaw-dashboard/paperclip-proxy.js`
+- **cloudflared 설정**: `paperclip.abamti.com -> http://localhost:3101` (config-new.yml)
+- **현재 상태**: 
+  - ✅ paperclip: 로컬 3100에서 실행 (`127.0.0.1`)
+  - ✅ 프록시: 3101에서 실행 (`0.0.0.0`, paperclip 프록시)
+  - ⚠️ Cloudflare DNS: API 토큰 권한 문제로 추가 불가 (대시보드 수동 필요)
+  - ⚠️ Tunnel ingress: cloudflared가 변경 인식 못함 (대시보드 수동 필요)
+- **테스트**: `http://localhost:3101` → ✅ 200 OK
+- **담당 에이전트**: DeepSeek (붐2)
