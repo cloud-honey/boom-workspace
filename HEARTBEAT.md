@@ -50,3 +50,16 @@
 - XPS 노드 자체가 연결 안 되면 (invoke 실패):
   `⚠️ XPS 노드 연결 끊김 — XPS 전원 꺼짐 또는 네트워크 문제`
 - 이상 없으면 보고 안 해도 됨 (HEARTBEAT_OK)
+
+## 하트비트 로그 기록 (필수)
+매 heartbeat 실행 시 반드시 아래 파일에 1줄 로그를 append할 것:
+`/Users/sykim/.openclaw/workspace/logs/heartbeat.log`
+
+형식 (한 줄):
+```
+YYYY-MM-DD HH:MM:SS KST | STATUS | model=모델명 | xps=active/down/disconnected | escalation=none/PENDING | notes=비고
+```
+
+- STATUS: `OK` (이상 없음) 또는 `ALERT` (문제 감지)
+- 파일이 없으면 생성
+- 100줄 이상이면 최근 50줄만 남기고 나머지 삭제
