@@ -127,8 +127,14 @@
 - [ ] UFW 방화벽 활성화 (sudo)
 - [ ] TeslaMate PM2 등록 (api:4001, frontend:4002)
 
-## 하트비트 설정 (2026-03-31)
-- **모델**: ollama/Qwen3:8b (로컬, 무료)
+## 하트비트 설정 (2026-04-01 MLX 전환)
+- **모델**: booml-mlx/booml-mlx (Qwen3-14B-MLX-4bit, 로컬, 무료)
 - **간격**: 30분 (`agents.defaults.heartbeat.every: "30m"`)
 - **로그**: `logs/heartbeat.log` (매 실행마다 1줄 append)
 - **체크 항목**: XPS 노드 상태, 모델 폴백 감지, DevTeam 에스컬레이션
+- **MLX 서버**: localhost:8000 (server_v2.py)
+
+## 로컬 LLM 전략 (2026-04-01)
+- **MLX**: 모든 로컬 LLM 작업 (하트비트, 붐엘 봇 등)
+- **Ollama**: 임베딩 전용 (nomic-embed-text, memorySearch)
+- **booml-mlx 프로바이더**: openclaw.json에 등록됨 (localhost:8000/v1)

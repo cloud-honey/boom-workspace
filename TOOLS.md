@@ -11,6 +11,7 @@
 - **붐2:** deepseek/deepseek-chat — 복잡한 코딩, 로직 분석
 - **붐3:** google/gemini-2.5-flash — 단순 수정, 문서, 자동화
 - **붐4:** ollama/qwen3-coder:30b-a3b-q4_K_M — QA/테스트 (sandbox 없음, 영어 지시 필수)
+- **붐엘:** booml-mlx/booml-mlx (Qwen3-14B-MLX-4bit) — 하트비트, 로컬 LLM 전용 (localhost:8000)
 
 ## API / 잔액
 - **DeepSeek 잔액:** ~$47.29 (2026-03-27 기준) — API: `https://api.deepseek.com/user/balance`
