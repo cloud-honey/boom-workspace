@@ -1,38 +1,64 @@
-INFO:     Started server process [83015]
+INFO:     Started server process [87011]
 INFO:     Waiting for application startup.
-2026-04-01 21:52:02,832 - __main__ - INFO - 붐엘 v2 서버 시작...
-2026-04-01 21:52:02,832 - __main__ - INFO - 모델 로드 중: Qwen/Qwen3-14B-MLX-4bit
-2026-04-01 21:52:03,567 - httpx - INFO - HTTP Request: GET https://huggingface.co/api/models/Qwen/Qwen3-14B-MLX-4bit/revision/main "HTTP/1.1 200 OK"
-Fetching 8 files:   0%|          | 0/8 [00:00<?, ?it/s]Fetching 8 files: 100%|██████████| 8/8 [00:00<00:00, 57952.39it/s]
-2026-04-01 21:52:04,106 - __main__ - INFO - 모델 로드 완료: 1.27초
-2026-04-01 21:52:04,106 - __main__ - INFO - KV캐시 양자화 활성화: 4bit, 40레이어
+2026-04-01 23:38:49,140 - __main__ - INFO - 붐엘 v2 서버 시작...
+2026-04-01 23:38:49,140 - __main__ - INFO - 모델 로드 중: Qwen/Qwen3-14B-MLX-4bit
+2026-04-01 23:38:50,060 - httpx - INFO - HTTP Request: GET https://huggingface.co/api/models/Qwen/Qwen3-14B-MLX-4bit/revision/main "HTTP/1.1 200 OK"
+Fetching 8 files:   0%|          | 0/8 [00:00<?, ?it/s]Fetching 8 files: 100%|██████████| 8/8 [00:00<00:00, 45652.29it/s]
+2026-04-01 23:38:50,592 - __main__ - INFO - 모델 로드 완료: 1.45초
+2026-04-01 23:38:50,593 - __main__ - INFO - KV캐시 양자화 활성화: 4bit, 40레이어
 INFO:     Application startup complete.
 INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
-2026-04-01 21:52:26,870 - __main__ - INFO - 생성 시작: prompt 1073자, max_tokens=700
-2026-04-01 21:52:39,781 - __main__ - INFO - 생성 완료: 12.91초, 280토큰, 21.7t/s
-INFO:     127.0.0.1:57060 - "POST /v1/chat/completions HTTP/1.1" 200 OK
-2026-04-01 21:56:29,718 - __main__ - INFO - 생성 시작: prompt 300자, max_tokens=1024
-2026-04-01 21:56:36,714 - __main__ - INFO - 생성 완료: 7.00초, 59토큰, 8.4t/s
-INFO:     127.0.0.1:57210 - "POST /v1/chat/completions HTTP/1.1" 200 OK
-2026-04-01 21:56:50,568 - __main__ - INFO - 생성 시작: prompt 507자, max_tokens=1024
-2026-04-01 21:57:19,200 - __main__ - INFO - 생성 완료: 28.63초, 85토큰, 3.0t/s
-INFO:     127.0.0.1:57239 - "POST /v1/chat/completions HTTP/1.1" 200 OK
-2026-04-01 21:58:04,677 - __main__ - INFO - 생성 시작: prompt 669자, max_tokens=1024
-2026-04-01 21:58:15,531 - __main__ - INFO - 생성 완료: 10.85초, 19토큰, 1.8t/s
-INFO:     127.0.0.1:57286 - "POST /v1/chat/completions HTTP/1.1" 200 OK
-2026-04-01 21:58:30,982 - __main__ - INFO - 생성 시작: prompt 312자, max_tokens=1024
-2026-04-01 21:59:29,215 - __main__ - INFO - 생성 완료: 58.23초, 179토큰, 3.1t/s
-INFO:     127.0.0.1:57310 - "POST /v1/chat/completions HTTP/1.1" 200 OK
-2026-04-01 21:59:55,564 - __main__ - INFO - 생성 시작: prompt 309자, max_tokens=1024
-2026-04-01 22:00:02,346 - __main__ - INFO - 생성 완료: 6.78초, 105토큰, 15.5t/s
-INFO:     127.0.0.1:57360 - "POST /v1/chat/completions HTTP/1.1" 200 OK
-2026-04-01 22:06:17,781 - __main__ - INFO - 생성 시작: prompt 317자, max_tokens=1024
-2026-04-01 22:06:20,026 - __main__ - INFO - 생성 완료: 2.24초, 36토큰, 16.0t/s
-INFO:     127.0.0.1:57603 - "POST /v1/chat/completions HTTP/1.1" 200 OK
-2026-04-01 22:06:46,885 - __main__ - INFO - 생성 시작: prompt 314자, max_tokens=1024
-2026-04-01 22:06:56,729 - __main__ - INFO - 생성 완료: 9.84초, 269토큰, 27.3t/s
-INFO:     127.0.0.1:57638 - "POST /v1/chat/completions HTTP/1.1" 200 OK
-INFO:     127.0.0.1:58510 - "GET /health HTTP/1.1" 200 OK
-2026-04-01 22:33:56,255 - __main__ - INFO - 생성 시작: prompt 356자, max_tokens=100
-2026-04-01 22:33:58,020 - __main__ - INFO - 생성 완료: 1.76초, 22토큰, 12.5t/s
-INFO:     127.0.0.1:58622 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62171 - "GET /health HTTP/1.1" 200 OK
+2026-04-01 23:38:55,288 - __main__ - INFO - 생성 시작: prompt 298자, max_tokens=20
+2026-04-01 23:38:56,705 - __main__ - INFO - 생성 완료: 1.42초, 12토큰, 8.5t/s
+INFO:     127.0.0.1:62174 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62486 - "GET /health HTTP/1.1" 200 OK
+2026-04-01 23:47:45,720 - __main__ - INFO - 생성 시작: prompt 775자, max_tokens=1024
+2026-04-01 23:47:58,123 - __main__ - INFO - 생성 완료: 12.40초, 288토큰, 23.2t/s
+INFO:     127.0.0.1:62555 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+2026-04-01 23:48:39,275 - __main__ - INFO - 생성 시작: prompt 312자, max_tokens=1024
+2026-04-01 23:48:41,909 - __main__ - INFO - 생성 완료: 2.63초, 45토큰, 17.1t/s
+INFO:     127.0.0.1:62642 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+2026-04-01 23:49:04,786 - __main__ - INFO - 생성 시작: prompt 503자, max_tokens=1024
+2026-04-01 23:49:09,457 - __main__ - INFO - 생성 완료: 4.67초, 84토큰, 18.0t/s
+INFO:     127.0.0.1:62667 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+2026-04-01 23:49:27,526 - __main__ - INFO - 생성 시작: prompt 303자, max_tokens=1024
+2026-04-01 23:49:31,254 - __main__ - INFO - 생성 완료: 3.73초, 77토큰, 20.7t/s
+INFO:     127.0.0.1:62710 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+2026-04-01 23:49:40,607 - __main__ - INFO - 생성 시작: prompt 698자, max_tokens=1024
+2026-04-01 23:49:52,499 - __main__ - INFO - 생성 완료: 11.89초, 285토큰, 24.0t/s
+INFO:     127.0.0.1:62733 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+2026-04-01 23:51:19,546 - __main__ - INFO - 생성 시작: prompt 344자, max_tokens=1024
+2026-04-01 23:51:56,322 - __main__ - INFO - 생성 완료: 36.78초, 1023토큰, 27.8t/s
+INFO:     127.0.0.1:62871 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+2026-04-01 23:53:21,416 - __main__ - INFO - 생성 시작: prompt 781자, max_tokens=1024
+2026-04-01 23:53:28,840 - __main__ - INFO - 생성 완료: 7.42초, 138토큰, 18.6t/s
+INFO:     127.0.0.1:63018 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63261 - "GET /health HTTP/1.1" 200 OK
+2026-04-01 23:56:21,895 - __main__ - INFO - 생성 시작: prompt 682자, max_tokens=300
+2026-04-01 23:56:29,094 - __main__ - INFO - 생성 완료: 7.20초, 152토큰, 21.1t/s
+INFO:     127.0.0.1:63274 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+2026-04-01 23:56:47,186 - __main__ - INFO - 생성 시작: prompt 320자, max_tokens=200
+2026-04-01 23:56:51,290 - __main__ - INFO - 생성 완료: 4.10초, 89토큰, 21.7t/s
+INFO:     127.0.0.1:63304 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+2026-04-01 23:57:19,094 - __main__ - INFO - 생성 시작: prompt 741자, max_tokens=150
+2026-04-01 23:57:22,088 - __main__ - INFO - 생성 완료: 2.99초, 19토큰, 6.3t/s
+INFO:     127.0.0.1:63342 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+2026-04-01 23:57:33,164 - __main__ - INFO - 생성 시작: prompt 1051자, max_tokens=200
+2026-04-01 23:57:43,523 - __main__ - INFO - 생성 완료: 10.36초, 200토큰, 19.3t/s
+INFO:     127.0.0.1:63366 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+2026-04-01 23:57:50,751 - __main__ - INFO - 생성 시작: prompt 311자, max_tokens=150
+2026-04-01 23:57:54,581 - __main__ - INFO - 생성 완료: 3.83초, 83토큰, 21.7t/s
+INFO:     127.0.0.1:63385 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+2026-04-01 23:58:01,354 - __main__ - INFO - 생성 시작: prompt 620자, max_tokens=250
+2026-04-01 23:58:08,345 - __main__ - INFO - 생성 완료: 6.99초, 150토큰, 21.5t/s
+INFO:     127.0.0.1:63398 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+2026-04-01 23:58:34,194 - __main__ - INFO - 생성 시작: prompt 306자, max_tokens=100
+2026-04-01 23:58:37,588 - __main__ - INFO - 생성 완료: 3.39초, 70토큰, 20.6t/s
+INFO:     127.0.0.1:63467 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+2026-04-01 23:58:44,143 - __main__ - INFO - 생성 시작: prompt 306자, max_tokens=100
+2026-04-01 23:58:47,539 - __main__ - INFO - 생성 완료: 3.40초, 70토큰, 20.6t/s
+INFO:     127.0.0.1:63495 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+2026-04-01 23:58:49,506 - __main__ - INFO - 생성 시작: prompt 301자, max_tokens=80
+2026-04-01 23:58:52,834 - __main__ - INFO - 생성 완료: 3.33초, 68토큰, 20.4t/s
+INFO:     127.0.0.1:63501 - "POST /v1/chat/completions HTTP/1.1" 200 OK

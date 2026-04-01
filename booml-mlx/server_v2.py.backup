@@ -44,80 +44,6 @@ PORT = 8000
 KST = timezone(timedelta(hours=9))
 
 # ──────────────────────────────────────────────
-# 실시간 시장 데이터 도구
-# ──────────────────────────────────────────────
-async def get_stock_data() -> str:
-    """실시간 주식 정보 (코스피, S&P500, 나스닥, BTC)"""
-    try:
-        headers = {"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)"}
-        results = []
-
-        # aiohttp로 동시 요청
-        async with aiohttp.ClientSession() as session:
-            # 1. 코스피 (네이버 금융)
-            try:
-                async with session.get("https://m.stock.naver.com/api/index/KOSPI/basic", timeout=3) as resp:
-                    if resp.status == 200:
-                        data = await resp.json()
-                        current = float(data["closePrice"].replace(",", ""))
-                        change = float(data["compareToPreviousClosePrice"].replace(",", ""))
-                        if data.get("compareToPreviousPrice", {}).get("name") == "FALLING":
-                            change = -change
-                        ratio = data.get("fluctuationsRatio", "0%")
-                        sign = "+" if change > 0 else ""
-                        results.append(f"코스피: {current:,.0f} ({sign}{ratio}%)")
-            except Exception as e:
-                logger.warning(f"코스피 조회 실패: {e}")
-
-            # 2. 미국 지수 + BTC (Yahoo Finance)
-            symbols = {"S&P500": "^GSPC", "나스닥": "^IXIC", "비트코인": "BTC=X"}
-            for name, sym in symbols.items():
-                try:
-                    async with session.get(f"https://query1.finance.yahoo.com/v8/finance/chart/{sym}?interval=1d&range=5d", timeout=3) as resp:
-                        if resp.status == 200:
-                            data = await resp.json()
-                            meta = data.get("chart", {}).get("result", [{}])[0].get("meta", {})
-                            price = meta.get("regularMarketPrice", 0)
-                            prev_close = meta.get("chartPreviousClose", price)
-                            chg = round((price - prev_close) / prev_close * 100, 2) if prev_close else 0
-                            sign = "+" if chg > 0 else ""
-                            results.append(f"{name}: ${price:,.0f} ({sign}{chg}%)")
-                except Exception as e:
-                    logger.warning(f"{name} 조회 실패: {e}")
-
-        return " | ".join(results) if results else "주식 정보 조회 중..."
-    except Exception as e:
-        logger.error(f"주식 데이터 오류: {e}")
-        return f"주식: 조회 중..."
-
-
-async def get_news_summary() -> str:
-    """뉴스 요약 (DuckDuckGo)"""
-    try:
-        headers = {"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)"}
-        queries = [("경제 뉴스", "경제"), ("기술 뉴스", "기술")]
-        results = []
-
-        async with aiohttp.ClientSession() as session:
-            for query, category in queries:
-                try:
-                    async with session.post("https://html.duckduckgo.com/html/", data={"q": query}, headers=headers, timeout=2) as resp:
-                        if resp.status == 200:
-                            html = await resp.text()
-                            titles = re.findall(r'class="result__a"[^>]*>(.*?)</a>', html, re.DOTALL)
-                            if titles:
-                                title = re.sub(r'<[^>]+>', '', titles[0]).strip()[:40]
-                                results.append(f"【{category}】 {title}")
-                except Exception:
-                    pass
-
-        return " | ".join(results) if results else "뉴스: 조회 중..."
-    except Exception as e:
-        logger.error(f"뉴스 오류: {e}")
-        return "뉴스: 조회 중..."
-
-
-# ──────────────────────────────────────────────
 # 실시간 검색 도구
 # ──────────────────────────────────────────────
 async def search_duckduckgo(query: str, max_results: int = 3) -> str:
@@ -428,48 +354,34 @@ async def chat_completions(request: ChatCompletionRequest) -> ChatCompletionResp
     extra_context = []
     now_kst = datetime.now(KST)
 
-    # 1. 날씨 체크
+    # 날씨 체크
     weather_loc = needs_weather(user_msg)
     if weather_loc:
         weather_data = await get_weather(weather_loc)
         extra_context.append(f"[실시간 날씨 데이터]\n{weather_data}")
 
-    # 2. 주식·뉴스 정보 (항상 포함)
-    try:
-        stock_data = await asyncio.wait_for(get_stock_data(), timeout=3)
-        extra_context.append(f"[실시간 주식 정보]\n{stock_data}")
-        
-        news_data = await asyncio.wait_for(get_news_summary(), timeout=3)
-        extra_context.append(f"[주요 뉴스]\n{news_data}")
-    except asyncio.TimeoutError:
-        logger.warning("주식/뉴스 데이터 조회 타임아웃")
-    except Exception as e:
-        logger.warning(f"주식/뉴스 데이터 조회 오류: {e}")
-
-    # 3. 검색 체크 (사용자 질문에 맞춰)
-    search_query = needs_search(user_msg)
-    if search_query:
-        search_data = await search_duckduckgo(search_query)
-        extra_context.append(f"[웹 검색 결과]\n{search_data}")
+    # 검색 체크 (날씨가 아닌 경우)
+    if not weather_loc:
+        search_query = needs_search(user_msg)
+        if search_query:
+            search_data = await search_duckduckgo(search_query)
+            extra_context.append(f"[웹 검색 결과]\n{search_data}")
 
     # 시스템 프롬프트 구성
     system_prompt = (
         f"당신은 '붐엘(BoomL)'이라는 AI 어시스턴트입니다. "
         f"macOS M4 Pro에서 MLX로 실행됩니다.\n"
-        f"현재 시각: {now_kst.strftime('%Y년 %m월 %d일 %A %H:%M KST')}\n\n"
-        f"📊 실시간 데이터 제공됨:\n"
+        f"현재 시각: {now_kst.strftime('%Y년 %m월 %d일 %A %H:%M KST')}\n"
+        f"규칙:\n"
+        f"- 한국어로 답변\n"
+        f"- 정확하고 간결하게\n"
+        f"- 모르면 솔직히 모른다고\n"
+        f"- 실시간 데이터가 제공되면 그것을 기반으로 답변\n"
+        f"- 날짜/시간 관련 질문은 현재 시각 기준으로 답변"
     )
 
     if extra_context:
-        system_prompt += "\n".join(extra_context)
-    
-    system_prompt += (
-        f"\n\n규칙:\n"
-        f"- 한국어로 답변\n"
-        f"- 위 실시간 데이터를 기반으로 답변 (직접 인용)\n"
-        f"- 정확하고 간결하게\n"
-        f"- 날짜/시간은 현재 시각 기준"
-    )
+        system_prompt += "\n\n" + "\n\n".join(extra_context)
 
     # 메시지 구성: system 프롬프트 주입
     final_messages = [Message(role="system", content=system_prompt)]
