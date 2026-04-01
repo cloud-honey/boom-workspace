@@ -1,1 +1,1 @@
-2026-04-01 00:41:00 UTC | STATUS | model=ollama/Qwen3:8b | xps=active | escalation=none | notes=No pending escalations, no active tasks, model check completed
+2026-04-01 00:41:00 UTC | STATUS | model=ollama/Qwen3:8b | xps=active | escalation=none | notes=No pending escalations, no active tasks, model check completed2026-04-01 14:20:00 KST | OK | model=claude-opus-4-6 | xps=active | escalation=none | notes=DarkWake pmset 수정 완료, 붐스 MACMINI_STATUS.md 배포 완료
