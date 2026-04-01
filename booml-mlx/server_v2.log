@@ -11,3 +11,24 @@ INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
 2026-04-01 21:52:26,870 - __main__ - INFO - 생성 시작: prompt 1073자, max_tokens=700
 2026-04-01 21:52:39,781 - __main__ - INFO - 생성 완료: 12.91초, 280토큰, 21.7t/s
 INFO:     127.0.0.1:57060 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+2026-04-01 21:56:29,718 - __main__ - INFO - 생성 시작: prompt 300자, max_tokens=1024
+2026-04-01 21:56:36,714 - __main__ - INFO - 생성 완료: 7.00초, 59토큰, 8.4t/s
+INFO:     127.0.0.1:57210 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+2026-04-01 21:56:50,568 - __main__ - INFO - 생성 시작: prompt 507자, max_tokens=1024
+2026-04-01 21:57:19,200 - __main__ - INFO - 생성 완료: 28.63초, 85토큰, 3.0t/s
+INFO:     127.0.0.1:57239 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+2026-04-01 21:58:04,677 - __main__ - INFO - 생성 시작: prompt 669자, max_tokens=1024
+2026-04-01 21:58:15,531 - __main__ - INFO - 생성 완료: 10.85초, 19토큰, 1.8t/s
+INFO:     127.0.0.1:57286 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+2026-04-01 21:58:30,982 - __main__ - INFO - 생성 시작: prompt 312자, max_tokens=1024
+2026-04-01 21:59:29,215 - __main__ - INFO - 생성 완료: 58.23초, 179토큰, 3.1t/s
+INFO:     127.0.0.1:57310 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+2026-04-01 21:59:55,564 - __main__ - INFO - 생성 시작: prompt 309자, max_tokens=1024
+2026-04-01 22:00:02,346 - __main__ - INFO - 생성 완료: 6.78초, 105토큰, 15.5t/s
+INFO:     127.0.0.1:57360 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+2026-04-01 22:06:17,781 - __main__ - INFO - 생성 시작: prompt 317자, max_tokens=1024
+2026-04-01 22:06:20,026 - __main__ - INFO - 생성 완료: 2.24초, 36토큰, 16.0t/s
+INFO:     127.0.0.1:57603 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+2026-04-01 22:06:46,885 - __main__ - INFO - 생성 시작: prompt 314자, max_tokens=1024
+2026-04-01 22:06:56,729 - __main__ - INFO - 생성 완료: 9.84초, 269토큰, 27.3t/s
+INFO:     127.0.0.1:57638 - "POST /v1/chat/completions HTTP/1.1" 200 OK
