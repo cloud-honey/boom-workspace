@@ -92,11 +92,12 @@
 
 ## 밤티 작업 기록 규칙
 ```
-## HH:MM KST [밤티] 작업명
+## HH:MM KST [밤티/실제모델명] 작업명
 - 지시: 마스터 요청 내용
 - 작업: 실제 수행 내용 (파일 경로 포함)
 - 결과: 성공/실패 및 비고
 ```
+- 예: `[밤티/gpt-5.4]`, `[밤티/gemini-flash]`
 
 ## 서비스 설치 전 필수 확인 규칙
 systemd/launchd/서비스 설치 작업 전 반드시 아래 순서 준수:
@@ -164,11 +165,14 @@ sudo tee /etc/systemd/system/openclaw-node.service ...
 
 ### 2. memory 기록 (모든 작업)
 ```
-## HH:MM KST 작업명
+## HH:MM KST [실제모델명] 작업명
 - 지시: 마스터 요청 내용
 - 작업: 실제 수행 내용 (파일 경로 포함)
 - 결과: 성공/실패 및 비고
 ```
+- **[실제모델명]은 필수** — session_status로 확인한 실제 모델명 사용
+- 예: `[opus]`, `[sonnet]`, `[deepseek]`, `[gpt-5.4]`, `[gemini-flash]`
+- 폴백 상태에서 코드 수정 시 어떤 모델이 작업했는지 추적 목적
 
 ## 하트비트 / 재시작
 - heartbeat 수신 시 `HEARTBEAT.md` 읽고 지침 따르기
