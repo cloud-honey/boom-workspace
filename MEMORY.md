@@ -232,6 +232,25 @@
 - **ingress 추가 방법**: config-local.yml 수정 → `pm2 restart cloudflared`
 - 기존 터널 `17a5a6f2`, `65c96982`는 폐기 (원격 관리 모드, 로컬 config 무시 문제)
 
+## 2026-04-01 맥미니 DarkWake 잠자기 문제 해결
+- 증상: 모든 서버 다운, SSH 접속 불가 (2시간+)
+- 원인: macOS DarkWake — caffeinate만으로는 방지 불가
+- 해결: `sudo pmset -a displaysleep 10 sleep 0 disksleep 0 powernap 0 womp 1 ttyskeepawake 1 tcpkeepalive 1`
+- 모니터는 10분 후 꺼지고, 시스템은 항상 깨어있음
+
+## 2026-04-01 데일리 리포트 시장 데이터 소스 교체
+- 코스피: Yahoo Finance → 네이버 금융 API (정확도 높음)
+- 미국지수/WTI/금: Yahoo chartPreviousClose → close 배열 기반 전일 종가 계산
+- 비트코인: CoinGecko API 신규 추가
+- 시장 항목: 5개 → 7개 (코스피, S&P, 나스닥, 다우, WTI, 금, BTC)
+- 아침(07:30) + 오후(18:00) 크론 모두 업데이트
+
+## 메모리 작업 기록 규칙 (2026-04-01 추가)
+- 매 작업 기록 시 실제 사용 모델명을 `[모델명]` 태그로 표시
+- 형식: `## HH:MM KST [모델명] 작업명`
+- 예: `## 14:00 KST [opus] 대시보드 버그 수정`
+- 폴백 상태에서 코드 수정 시 어떤 모델이 작업했는지 추적 가능
+
 ## 2026-03-31 하트비트 비활성화
 - **설정**: `agents.defaults.heartbeat.every: "0"` (openclaw.json)
 - **이유**: 토큰 누수 — 30분마다 ~57k 토큰 소모 (하루 ~2.7M), 진행 작업 없어도 계속 실행
