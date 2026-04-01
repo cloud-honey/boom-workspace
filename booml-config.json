@@ -1,0 +1,33 @@
+{
+  "agent": {
+    "id": "booml",
+    "name": "붐엘 (BoomL)",
+    "description": "macOS M4 Pro 최적화 로컬 LLM 에이전트",
+    "model": "ollama/qwen3:8b",
+    "platform": "macos-only",
+    "language": "english-only",
+    "optimizations": {
+      "metal_acceleration": true,
+      "memory_efficient": true,
+      "low_latency": true
+    },
+    "capabilities": [
+      "high-speed-inference",
+      "local-processing",
+      "mlx-ready",
+      "telegram-integration"
+    ],
+    "performance": {
+      "current_speed": "42.92 t/s",
+      "target_speed": "100+ t/s",
+      "vram_usage": "11 GB",
+      "max_vram": "45 GB"
+    },
+    "integration": {
+      "openclaw": true,
+      "telegram_bot": "@boomllm_bot",
+      "mlx_framework": "installed",
+      "status": "active"
+    }
+  }
+}

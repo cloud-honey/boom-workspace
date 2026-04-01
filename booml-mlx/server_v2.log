@@ -1,0 +1,13 @@
+INFO:     Started server process [83015]
+INFO:     Waiting for application startup.
+2026-04-01 21:52:02,832 - __main__ - INFO - 붐엘 v2 서버 시작...
+2026-04-01 21:52:02,832 - __main__ - INFO - 모델 로드 중: Qwen/Qwen3-14B-MLX-4bit
+2026-04-01 21:52:03,567 - httpx - INFO - HTTP Request: GET https://huggingface.co/api/models/Qwen/Qwen3-14B-MLX-4bit/revision/main "HTTP/1.1 200 OK"
+Fetching 8 files:   0%|          | 0/8 [00:00<?, ?it/s]Fetching 8 files: 100%|██████████| 8/8 [00:00<00:00, 57952.39it/s]
+2026-04-01 21:52:04,106 - __main__ - INFO - 모델 로드 완료: 1.27초
+2026-04-01 21:52:04,106 - __main__ - INFO - KV캐시 양자화 활성화: 4bit, 40레이어
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
+2026-04-01 21:52:26,870 - __main__ - INFO - 생성 시작: prompt 1073자, max_tokens=700
+2026-04-01 21:52:39,781 - __main__ - INFO - 생성 완료: 12.91초, 280토큰, 21.7t/s
+INFO:     127.0.0.1:57060 - "POST /v1/chat/completions HTTP/1.1" 200 OK
