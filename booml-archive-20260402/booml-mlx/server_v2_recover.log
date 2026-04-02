@@ -1,0 +1,28 @@
+INFO:     Started server process [11689]
+INFO:     Waiting for application startup.
+2026-04-02 17:39:10,406 - __main__ - INFO - 붐엘 v2 서버 시작...
+2026-04-02 17:39:10,406 - __main__ - INFO - 모델 로드 중: Qwen/Qwen3-14B-MLX-4bit
+2026-04-02 17:39:11,177 - httpx - INFO - HTTP Request: GET https://huggingface.co/api/models/Qwen/Qwen3-14B-MLX-4bit/revision/main "HTTP/1.1 200 OK"
+Fetching 8 files:   0%|          | 0/8 [00:00<?, ?it/s]Fetching 8 files: 100%|██████████| 8/8 [00:00<00:00, 140395.11it/s]
+2026-04-02 17:39:11,736 - __main__ - INFO - 모델 로드 완료: 1.33초
+2026-04-02 17:39:11,736 - __main__ - INFO - KV캐시 양자화 활성화: 4bit, 40레이어
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
+INFO:     127.0.0.1:54856 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+2026-04-02 17:39:50,474 - __main__ - INFO - 생성 시작: prompt 1064자, max_tokens=512
+2026-04-02 17:39:54,023 - __main__ - INFO - 생성 완료: 3.55초, 9토큰, 2.5t/s
+INFO:     127.0.0.1:54876 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+2026-04-02 17:40:09,007 - __main__ - INFO - 생성 시작: prompt 1144자, max_tokens=512
+2026-04-02 17:40:12,727 - __main__ - INFO - 생성 완료: 3.72초, 9토큰, 2.4t/s
+INFO:     127.0.0.1:54891 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55275 - "POST /v1/chat/completions HTTP/1.1" 422 Unprocessable Content
+INFO:     127.0.0.1:55768 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55989 - "POST /v1/chat/completions HTTP/1.1" 422 Unprocessable Content
+INFO:     127.0.0.1:56946 - "POST /v1/chat/completions HTTP/1.1" 422 Unprocessable Content
+INFO:     127.0.0.1:57775 - "POST /v1/chat/completions HTTP/1.1" 422 Unprocessable Content
+2026-04-02 19:03:11,326 - __main__ - INFO - 생성 시작: prompt 1327자, max_tokens=512
+2026-04-02 19:03:15,607 - __main__ - INFO - 생성 완료: 4.28초, 16토큰, 3.7t/s
+INFO:     127.0.0.1:57813 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58644 - "POST /v1/chat/completions HTTP/1.1" 422 Unprocessable Content
+INFO:     127.0.0.1:59506 - "POST /v1/chat/completions HTTP/1.1" 422 Unprocessable Content
+INFO:     127.0.0.1:60399 - "POST /v1/chat/completions HTTP/1.1" 422 Unprocessable Content

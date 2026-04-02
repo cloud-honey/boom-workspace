@@ -429,6 +429,23 @@ async def chat_completions(request: ChatCompletionRequest) -> ChatCompletionResp
             user_msg = m.content
             break
 
+    # 모델명 질문은 현재 런타임 model_id를 동적으로 반환
+    model_query_keywords = [
+        "실제 모델명", "정확한 모델명", "연동된 ai 모델명", "연동 모델명",
+        "현재 모델명", "무슨 모델", "어떤 모델", "model name", "actual model"
+    ]
+    if any(k in user_msg.lower() for k in model_query_keywords):
+        return ChatCompletionResponse(
+            id=f"chatcmpl-{int(time.time())}",
+            created=int(time.time()),
+            model="booml-mlx",
+            choices=[ChatCompletionChoice(message=Message(
+                role="assistant",
+                content=f"현재 연동 모델은 {mlx_model.model_id} 입니다."
+            ))],
+            usage={"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+        )
+
     # 실시간 데이터 수집
     extra_context = []
     now_kst = datetime.now(KST)

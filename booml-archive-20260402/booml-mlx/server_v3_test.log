@@ -26,3 +26,14 @@ INFO:     Application startup complete.
 INFO:     Uvicorn running on http://0.0.0.0:8001 (Press CTRL+C to quit)
 INFO:     127.0.0.1:58993 - "GET /health HTTP/1.1" 200 OK
 INFO:     127.0.0.1:58994 - "GET /v1/architecture/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59768 - "GET /health HTTP/1.1" 200 OK
+2026-04-02 14:29:06,572 - __main__ - ERROR - 채팅 완성 실패: no such table: session_stats
+INFO:     127.0.0.1:59769 - "POST /v1/chat/completions HTTP/1.1" 500 Internal Server Error
+INFO:     127.0.0.1:59798 - "GET /health HTTP/1.1" 200 OK
+2026-04-02 14:29:37,280 - __main__ - ERROR - 채팅 완성 실패: no such table: session_stats
+INFO:     127.0.0.1:59799 - "POST /v1/chat/completions HTTP/1.1" 500 Internal Server Error
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+2026-04-02 17:19:50,182 - __main__ - INFO - 붐엘 v3 서버 종료...
+INFO:     Application shutdown complete.
+INFO:     Finished server process [74371]
