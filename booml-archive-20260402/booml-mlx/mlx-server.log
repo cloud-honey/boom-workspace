@@ -1,26 +1,0 @@
-2026-04-01 20:08:31,628 - __main__ - INFO - 붐엘(BoomL) API 서버 시작: http://localhost:8000
-INFO:     Started server process [79234]
-INFO:     Waiting for application startup.
-2026-04-01 20:08:31,633 - __main__ - INFO - 붐엘(BoomL) API 서버 시작 중...
-2026-04-01 20:08:31,633 - __main__ - INFO - 모델 로드 중: mlx-community/Qwen2.5-7B-Instruct-4bit
-2026-04-01 20:08:32,987 - httpx - INFO - HTTP Request: GET https://huggingface.co/api/models/mlx-community/Qwen2.5-7B-Instruct-4bit/revision/main "HTTP/1.1 200 OK"
-Fetching 9 files:   0%|          | 0/9 [00:00<?, ?it/s]Fetching 9 files: 100%|██████████| 9/9 [00:00<00:00, 28489.61it/s]
-2026-04-01 20:08:33,362 - __main__ - INFO - 모델 로드 완료: 1.73초
-INFO:     Application startup complete.
-INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
-INFO:     127.0.0.1:51907 - "GET /health HTTP/1.1" 200 OK
-INFO:     127.0.0.1:52057 - "POST /generate HTTP/1.1" 404 Not Found
-INFO:     127.0.0.1:52126 - "GET /health HTTP/1.1" 200 OK
-INFO:     127.0.0.1:52137 - "POST /generate HTTP/1.1" 404 Not Found
-2026-04-01 20:15:03,738 - __main__ - INFO - 생성 시작: 23자, max_tokens=100
-2026-04-01 20:15:03,738 - __main__ - ERROR - 생성 실패: 'Model' object has no attribute 'generate'
-INFO:     127.0.0.1:52155 - "POST /v1/chat/completions HTTP/1.1" 200 OK
-INFO:     127.0.0.1:52191 - "POST /generate HTTP/1.1" 404 Not Found
-INFO:     Shutting down
-INFO:     Waiting for application shutdown.
-2026-04-01 20:30:57,124 - __main__ - INFO - 붐엘(BoomL) API 서버 종료 중...
-INFO:     Application shutdown complete.
-INFO:     Finished server process [79234]
-./start-server.sh: line 4: 79234 Terminated: 15          python3 server.py
-/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/multiprocessing/resource_tracker.py:396: UserWarning: resource_tracker: There appear to be 1 leaked semaphore objects to clean up at shutdown: {'/mp-xtq5ym3g'}
-  warnings.warn(
