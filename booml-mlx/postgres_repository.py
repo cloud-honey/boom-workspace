@@ -78,7 +78,7 @@ class PostgreSQLMemoryRepository(MemoryRepository):
         conn = self._get_connection()
         try:
             with conn.cursor() as cursor:
-                # 대화 턴 테이블
+                # PostgreSQL에서는 CREATE TABLE 안에 INDEX를 선언하지 않음
                 cursor.execute("""
                     CREATE TABLE IF NOT EXISTS conversation_turns (
                         id SERIAL PRIMARY KEY,
@@ -89,13 +89,10 @@ class PostgreSQLMemoryRepository(MemoryRepository):
                         timestamp TIMESTAMPTZ NOT NULL,
                         project_id VARCHAR(255),
                         metadata JSONB,
-                        created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
-                        INDEX idx_conversation_user (user_id),
-                        INDEX idx_conversation_timestamp (timestamp),
-                        INDEX idx_conversation_project (project_id)
+                        created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
                     )
                 """)
-                
+
                 # 세션 요약 테이블
                 cursor.execute("""
                     CREATE TABLE IF NOT EXISTS session_summaries (
@@ -106,12 +103,10 @@ class PostgreSQLMemoryRepository(MemoryRepository):
                         created_at TIMESTAMPTZ NOT NULL,
                         updated_at TIMESTAMPTZ NOT NULL,
                         project_id VARCHAR(255),
-                        metadata JSONB,
-                        FOREIGN KEY (session_id) REFERENCES conversation_turns(conversation_id) ON DELETE CASCADE,
-                        INDEX idx_session_user (user_id)
+                        metadata JSONB
                     )
                 """)
-                
+
                 # 사용자 프로필 테이블
                 cursor.execute("""
                     CREATE TABLE IF NOT EXISTS user_profiles (
@@ -122,12 +117,16 @@ class PostgreSQLMemoryRepository(MemoryRepository):
                         confidence REAL DEFAULT 0.0,
                         created_at TIMESTAMPTZ NOT NULL,
                         updated_at TIMESTAMPTZ NOT NULL,
-                        project_id VARCHAR(255),
-                        UNIQUE(user_id, scope, project_id),
-                        INDEX idx_profile_user_scope (user_id, scope)
+                        project_id VARCHAR(255)
                     )
                 """)
-                
+
+                # unique index: project_id NULL 허용을 위해 COALESCE 사용
+                cursor.execute("""
+                    CREATE UNIQUE INDEX IF NOT EXISTS idx_user_profiles_unique
+                    ON user_profiles (user_id, scope, COALESCE(project_id, ''))
+                """)
+
                 # 긍정 예시 테이블
                 cursor.execute("""
                     CREATE TABLE IF NOT EXISTS positive_examples (
@@ -137,11 +136,10 @@ class PostgreSQLMemoryRepository(MemoryRepository):
                         tags JSONB,
                         context TEXT,
                         created_at TIMESTAMPTZ NOT NULL,
-                        project_id VARCHAR(255),
-                        INDEX idx_positive_user (user_id)
+                        project_id VARCHAR(255)
                     )
                 """)
-                
+
                 # 부정 태그 테이블
                 cursor.execute("""
                     CREATE TABLE IF NOT EXISTS negative_tags (
@@ -150,11 +148,10 @@ class PostgreSQLMemoryRepository(MemoryRepository):
                         tag VARCHAR(255) NOT NULL,
                         context TEXT,
                         created_at TIMESTAMPTZ NOT NULL,
-                        project_id VARCHAR(255),
-                        INDEX idx_negative_user (user_id)
+                        project_id VARCHAR(255)
                     )
                 """)
-                
+
                 # 피드백 이벤트 테이블
                 cursor.execute("""
                     CREATE TABLE IF NOT EXISTS feedback_events (
@@ -164,11 +161,20 @@ class PostgreSQLMemoryRepository(MemoryRepository):
                         content TEXT NOT NULL,
                         metadata JSONB,
                         created_at TIMESTAMPTZ NOT NULL,
-                        project_id VARCHAR(255),
-                        INDEX idx_feedback_user (user_id)
+                        project_id VARCHAR(255)
                     )
                 """)
-                
+
+                # 인덱스 생성
+                cursor.execute("CREATE INDEX IF NOT EXISTS idx_conversation_user ON conversation_turns (user_id)")
+                cursor.execute("CREATE INDEX IF NOT EXISTS idx_conversation_timestamp ON conversation_turns (timestamp)")
+                cursor.execute("CREATE INDEX IF NOT EXISTS idx_conversation_project ON conversation_turns (project_id)")
+                cursor.execute("CREATE INDEX IF NOT EXISTS idx_session_user ON session_summaries (user_id)")
+                cursor.execute("CREATE INDEX IF NOT EXISTS idx_profile_user_scope ON user_profiles (user_id, scope)")
+                cursor.execute("CREATE INDEX IF NOT EXISTS idx_positive_user ON positive_examples (user_id)")
+                cursor.execute("CREATE INDEX IF NOT EXISTS idx_negative_user ON negative_tags (user_id)")
+                cursor.execute("CREATE INDEX IF NOT EXISTS idx_feedback_user ON feedback_events (user_id)")
+
                 conn.commit()
                 logger.info("PostgreSQL 테이블 초기화 완료")
         except Exception as e:
