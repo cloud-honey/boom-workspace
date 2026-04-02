@@ -23,6 +23,15 @@ from pydantic import BaseModel, Field
 import uvicorn
 import aiohttp
 
+# ──────────────────────────────────────────────
+# 로깅
+# ──────────────────────────────────────────────
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
+
 # 붐엘 아키텍처 모듈 임포트
 try:
     from memory_store import memory_store, ConversationTurn, SessionSummary, ProfileScope
@@ -43,15 +52,6 @@ except ImportError as e:
     logger.warning(f"붐엘 v3 아키텍처 모듈 로드 실패: {e}. 기본 모드로 실행됩니다.")
     ARCHITECTURE_ENABLED = False
     MODEL_ROUTING_ENABLED = False
-
-# ──────────────────────────────────────────────
-# 로깅
-# ──────────────────────────────────────────────
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
-logger = logging.getLogger(__name__)
 
 # ──────────────────────────────────────────────
 # 설정
