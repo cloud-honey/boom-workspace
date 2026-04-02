@@ -57,7 +57,7 @@ except ImportError as e:
 # 설정
 # ──────────────────────────────────────────────
 MAX_TOKENS_DEFAULT = 512  # 짧은 답변을 강제하기 위해 감소
-PORT = 8002
+PORT = 8003
 
 KST = timezone(timedelta(hours=9))
 
@@ -387,7 +387,9 @@ async def chat_completion(request: ChatCompletionRequest) -> ChatCompletionRespo
             # 붐엘 코어를 통한 메시지 처리
             last_user_message = user_messages[-1].content if user_messages else ""
             response_text, metadata = booml_core.process_message(
-                session_id, last_user_message, realtime_data
+                session_id, last_user_message, realtime_data,
+                max_tokens=request.max_tokens,
+                temperature=request.temperature
             )
             
             # 응답 메시지 구성

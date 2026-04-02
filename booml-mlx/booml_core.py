@@ -6,6 +6,7 @@
 
 import logging
 import uuid
+import time
 from datetime import datetime, timezone, timedelta
 from typing import Dict, Any, Optional, List, Tuple
 try:
@@ -16,6 +17,7 @@ try:
     from .policy_engine import policy_engine, FeedbackType
     from .prompt_composer import prompt_composer
     from .kpi_logger import kpi_logger, KPIMetric
+    from .model_router import model_router
 except ImportError:
     # 독립 실행을 위한 폴백
     from memory_store import (
@@ -25,6 +27,7 @@ except ImportError:
     from policy_engine import policy_engine, FeedbackType
     from prompt_composer import prompt_composer
     from kpi_logger import kpi_logger, KPIMetric
+    from model_router import model_router
 
 logger = logging.getLogger(__name__)
 
@@ -92,7 +95,8 @@ class BoomLCore:
         logger.info(f"세션 종료: {session_id}, 성공률={success_rate:.2f}, 요약={summary_text[:50]}...")
     
     def process_message(self, session_id: str, user_message: str, 
-                        realtime_data: str = "") -> Tuple[str, Dict[str, Any]]:
+                        realtime_data: str = "", max_tokens: int = 512,
+                        temperature: float = 0.7) -> Tuple[str, Dict[str, Any]]:
         """메시지 처리 및 응답 생성"""
         if session_id not in self.active_sessions:
             # 자동으로 세션 시작
@@ -130,10 +134,10 @@ class BoomLCore:
         if "관련 과거 대화" in prompt or "좋은 답변 예시" in prompt:
             kpi_logger.log_memory_usage(user_id, session_id, usefulness_score=0.7)
         
-        # 4. 응답 생성 (외부 모델 호출)
-        # 이 부분은 실제 모델 호출로 대체되어야 함
-        # 현재는 더미 응답 반환
-        response_text = self._generate_response(prompt)
+        # 4. 응답 생성 (실제 모델 라우터 사용)
+        started = time.time()
+        response_text, model_used = self._generate_response(prompt, max_tokens=max_tokens, temperature=temperature)
+        generation_ms = round((time.time() - started) * 1000, 2)
         
         # 5. 대화 턴 저장 (어시스턴트 응답)
         assistant_turn = ConversationTurn(
@@ -155,7 +159,9 @@ class BoomLCore:
             "project_id": project_id,
             "prompt_length": len(prompt),
             "response_length": len(response_text),
-            "timestamp": datetime.now(KST).isoformat()
+            "timestamp": datetime.now(KST).isoformat(),
+            "model_used": model_used,
+            "generation_ms": generation_ms
         }
         
         logger.info(f"메시지 처리 완료: session={session_id}, prompt_len={len(prompt)}, response_len={len(response_text)}")
@@ -245,11 +251,22 @@ class BoomLCore:
         
         return result
     
-    def _generate_response(self, prompt: str) -> str:
-        """응답 생성 (더미 구현 - 실제로는 MLX 모델 호출)"""
-        # 실제 구현에서는 server_v2.py의 MLX 모델 호출로 대체
-        # 현재는 간단한 더미 응답
-        return "이것은 붐엘의 응답입니다. 실제 구현에서는 MLX 모델이 이 프롬프트를 기반으로 응답을 생성합니다."
+    def _generate_response(self, prompt: str, max_tokens: int = 512, temperature: float = 0.7) -> Tuple[str, str]:
+        """응답 생성: 기본적으로 활성 모델 라우터를 통해 실제 MLX 생성 수행"""
+        messages = [{"role": "user", "content": prompt}]
+        try:
+            response_text, model_used = model_router.generate_with_strategy(
+                messages,
+                max_tokens=max_tokens,
+                temperature=temperature
+            )
+            if response_text:
+                return response_text, model_used
+        except Exception as e:
+            logger.error(f"모델 라우터 응답 생성 실패: {e}")
+        
+        # 최후 폴백
+        return "현재 실제 모델 응답 생성에 실패했습니다. 잠시 후 다시 시도해주세요.", "fallback-error"
     
     def cleanup_old_sessions(self, max_age_hours: int = 24):
         """오래된 세션 정리"""
