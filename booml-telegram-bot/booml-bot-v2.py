@@ -2,11 +2,13 @@
 """붐엘 텔레그램 봇 v2
 - Qwen3-14B + TurboQuant 서버 연동
 - 실시간 검색/날씨 지원 (서버 사이드)
+- 대화 맥락 메모리 (최근 10개 메시지)
 """
 import asyncio
 import logging
 import aiohttp
 import time
+from collections import deque
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 
@@ -19,16 +21,41 @@ logger = logging.getLogger(__name__)
 BOT_TOKEN = '8592906266:AAGA326kDs1pNXbVRWbwtWxIUR3n9VkKQYE'
 MLX_SERVER_URL = 'http://localhost:8000'
 
+# 사용자별 대화 히스토리 (최근 10개 메시지 유지)
+user_histories = {}
+MAX_HISTORY_PER_USER = 10
 
-async def query_mlx(prompt: str, timeout_sec: int = 120) -> tuple[str, float]:
-    """MLX 서버 쿼리 — (응답, 소요시간) 반환"""
+def get_user_history(user_id: int) -> deque:
+    """사용자의 대화 히스토리 반환 (없으면 생성)"""
+    if user_id not in user_histories:
+        user_histories[user_id] = deque(maxlen=MAX_HISTORY_PER_USER)
+    return user_histories[user_id]
+
+def format_history_for_api(history: deque) -> list:
+    """히스토리를 API 메시지 형식으로 변환"""
+    messages = []
+    for item in history:
+        if item['role'] in ['user', 'assistant']:
+            messages.append(item)
+    return messages
+
+
+async def query_mlx(prompt: str, user_id: int = None, timeout_sec: int = 120) -> tuple[str, float]:
+    """MLX 서버 쿼리 — 대화 맥락 포함 (응답, 소요시간) 반환"""
     start = time.time()
     try:
+        # 대화 히스토리 구성
+        messages = [{"role": "user", "content": prompt}]
+        if user_id and user_id in user_histories:
+            history = format_history_for_api(user_histories[user_id])
+            # 히스토리에 현재 메시지 앞에 추가
+            messages = history + messages
+        
         async with aiohttp.ClientSession() as session:
             async with session.post(
                 f'{MLX_SERVER_URL}/v1/chat/completions',
                 json={
-                    'messages': [{"role": "user", "content": prompt}],
+                    'messages': messages,
                     'model': 'booml-mlx',
                     'max_tokens': 512,
                     'temperature': 0.5
@@ -39,7 +66,15 @@ async def query_mlx(prompt: str, timeout_sec: int = 120) -> tuple[str, float]:
                 if resp.status == 200:
                     data = await resp.json()
                     if 'choices' in data and data['choices']:
-                        return data['choices'][0]['message']['content'], elapsed
+                        response = data['choices'][0]['message']['content']
+                        
+                        # 히스토리에 저장 (user_id 있을 때만)
+                        if user_id:
+                            history = get_user_history(user_id)
+                            history.append({"role": "user", "content": prompt})
+                            history.append({"role": "assistant", "content": response})
+                        
+                        return response, elapsed
                     return '응답 생성 실패', elapsed
                 else:
                     err = await resp.text()
@@ -52,6 +87,12 @@ async def query_mlx(prompt: str, timeout_sec: int = 120) -> tuple[str, float]:
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
+    user_id = user.id
+    
+    # 히스토리 초기화
+    if user_id in user_histories:
+        user_histories[user_id].clear()
+    
     # 서버 상태 체크
     status_str = "❌ 오프라인"
     model_name = "알 수 없음"
@@ -78,11 +119,13 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"• TurboQuant: {tq_str}\n"
         f"• 서버: {status_str}\n\n"
         f"🔧 *명령어*\n"
+        f"/start - 대화 초기화\n"
         f"/status - 시스템 상태\n"
         f"/benchmark - 성능 테스트\n\n"
         f"🔍 *기능*\n"
-        f"• 실시간 웹 검색\n"
-        f"• 날씨 조회\n"
+        f"• 실시간 웹 검색 (자동)\n"
+        f"• 날씨 조회 (자동)\n"
+        f"• 대화 맥락 유지 (최근 10개 메시지)\n"
         f"• 한국어 대화\n\n"
         f"💬 질문을 보내주세요!"
     )
@@ -141,7 +184,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     processing = await update.message.reply_text("⚡ 생각 중...")
 
-    response, elapsed = await query_mlx(user_msg)
+    response, elapsed = await query_mlx(user_msg, user_id=user_id)
 
     logger.info(f"✅ 응답: {len(response)}자, {elapsed:.1f}초")
 
