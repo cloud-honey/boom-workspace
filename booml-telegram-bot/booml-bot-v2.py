@@ -30,8 +30,8 @@ async def query_mlx(prompt: str, timeout_sec: int = 120) -> tuple[str, float]:
                 json={
                     'messages': [{"role": "user", "content": prompt}],
                     'model': 'booml-mlx',
-                    'max_tokens': 1024,
-                    'temperature': 0.7
+                    'max_tokens': 512,
+                    'temperature': 0.5
                 },
                 timeout=aiohttp.ClientTimeout(total=timeout_sec)
             ) as resp:

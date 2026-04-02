@@ -62,3 +62,45 @@ INFO:     127.0.0.1:63495 - "POST /v1/chat/completions HTTP/1.1" 200 OK
 2026-04-01 23:58:49,506 - __main__ - INFO - 생성 시작: prompt 301자, max_tokens=80
 2026-04-01 23:58:52,834 - __main__ - INFO - 생성 완료: 3.33초, 68토큰, 20.4t/s
 INFO:     127.0.0.1:63501 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63591 - "POST /v1/chat/completions HTTP/1.1" 422 Unprocessable Content
+INFO:     127.0.0.1:49351 - "POST /v1/chat/completions HTTP/1.1" 422 Unprocessable Content
+INFO:     127.0.0.1:51577 - "POST /v1/chat/completions HTTP/1.1" 422 Unprocessable Content
+INFO:     127.0.0.1:56323 - "POST /v1/chat/completions HTTP/1.1" 422 Unprocessable Content
+INFO:     127.0.0.1:49817 - "POST /v1/chat/completions HTTP/1.1" 422 Unprocessable Content
+INFO:     127.0.0.1:52081 - "POST /v1/chat/completions HTTP/1.1" 422 Unprocessable Content
+INFO:     127.0.0.1:54237 - "POST /v1/chat/completions HTTP/1.1" 422 Unprocessable Content
+INFO:     127.0.0.1:56506 - "POST /v1/chat/completions HTTP/1.1" 422 Unprocessable Content
+INFO:     127.0.0.1:58708 - "POST /v1/chat/completions HTTP/1.1" 422 Unprocessable Content
+INFO:     127.0.0.1:62339 - "POST /v1/chat/completions HTTP/1.1" 422 Unprocessable Content
+INFO:     127.0.0.1:64678 - "POST /v1/chat/completions HTTP/1.1" 422 Unprocessable Content
+INFO:     127.0.0.1:50588 - "POST /v1/chat/completions HTTP/1.1" 422 Unprocessable Content
+INFO:     127.0.0.1:52825 - "POST /v1/chat/completions HTTP/1.1" 422 Unprocessable Content
+INFO:     127.0.0.1:55106 - "POST /v1/chat/completions HTTP/1.1" 422 Unprocessable Content
+INFO:     127.0.0.1:62120 - "POST /v1/chat/completions HTTP/1.1" 422 Unprocessable Content
+2026-04-02 07:22:41,740 - __main__ - INFO - 생성 시작: prompt 303자, max_tokens=1024
+2026-04-02 07:22:45,597 - __main__ - INFO - 생성 완료: 3.86초, 82토큰, 21.3t/s
+INFO:     127.0.0.1:63831 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+2026-04-02 07:23:04,457 - __main__ - INFO - 생성 시작: prompt 729자, max_tokens=1024
+2026-04-02 07:23:08,784 - __main__ - INFO - 생성 완료: 4.33초, 69토큰, 15.9t/s
+INFO:     127.0.0.1:63852 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+2026-04-02 07:23:36,757 - __main__ - INFO - 생성 시작: prompt 834자, max_tokens=1024
+2026-04-02 07:23:42,841 - __main__ - INFO - 생성 완료: 6.08초, 100토큰, 16.4t/s
+INFO:     127.0.0.1:63901 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64389 - "POST /v1/chat/completions HTTP/1.1" 422 Unprocessable Content
+INFO:     127.0.0.1:50251 - "POST /v1/chat/completions HTTP/1.1" 422 Unprocessable Content
+INFO:     127.0.0.1:52486 - "POST /v1/chat/completions HTTP/1.1" 422 Unprocessable Content
+2026-04-02 08:58:29,770 - __main__ - INFO - 생성 시작: prompt 334자, max_tokens=1024
+2026-04-02 08:58:33,280 - __main__ - INFO - 생성 완료: 3.51초, 70토큰, 20.0t/s
+INFO:     127.0.0.1:54723 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+2026-04-02 08:58:53,279 - __main__ - INFO - 생성 시작: prompt 317자, max_tokens=1024
+2026-04-02 08:58:56,475 - __main__ - INFO - 생성 완료: 3.20초, 63토큰, 19.7t/s
+INFO:     127.0.0.1:54764 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54845 - "POST /v1/chat/completions HTTP/1.1" 422 Unprocessable Content
+INFO:     127.0.0.1:58644 - "POST /v1/chat/completions HTTP/1.1" 422 Unprocessable Content
+INFO:     127.0.0.1:60943 - "POST /v1/chat/completions HTTP/1.1" 422 Unprocessable Content
+INFO:     127.0.0.1:63267 - "POST /v1/chat/completions HTTP/1.1" 422 Unprocessable Content
+INFO:     127.0.0.1:49572 - "POST /v1/chat/completions HTTP/1.1" 422 Unprocessable Content
+INFO:     127.0.0.1:49615 - "GET /health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49688 - "GET /health HTTP/1.1" 200 OK
+/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/multiprocessing/resource_tracker.py:396: UserWarning: resource_tracker: There appear to be 1 leaked semaphore objects to clean up at shutdown: {'/mp-5k4uvs3_'}
+  warnings.warn(
