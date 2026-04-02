@@ -745,5 +745,12 @@ class SQLiteMemoryRepository(MemoryRepository):
         return [turn for _, turn in scored_turns[:limit]]
 
 
-# 전역 메모리 저장소 인스턴스
-memory_store = SQLiteMemoryRepository()
+# 전역 메모리 저장소 인스턴스 (팩토리 기반 생성)
+try:
+    from repository_factory import get_memory_store
+    memory_store = get_memory_store()
+    logger.info(f"메모리 저장소 초기화 완료: {type(memory_store).__name__}")
+except ImportError:
+    # 폴백: SQLite 저장소
+    memory_store = SQLiteMemoryRepository()
+    logger.info("SQLite 메모리 저장소 초기화 완료 (폴백)")
