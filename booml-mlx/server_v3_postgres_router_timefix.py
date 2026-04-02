@@ -57,7 +57,7 @@ except ImportError as e:
 # 설정
 # ──────────────────────────────────────────────
 MAX_TOKENS_DEFAULT = 512  # 짧은 답변을 강제하기 위해 감소
-PORT = 8000
+PORT = 8004
 
 KST = timezone(timedelta(hours=9))
 
