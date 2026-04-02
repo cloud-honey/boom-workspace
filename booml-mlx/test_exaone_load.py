@@ -17,9 +17,9 @@ def test_exaone_load():
         print(f"❌ Failed to import mlx_lm: {e}")
         return False
     
-    model_id = "mlx-community/EXAONE-3.5-7.8B-Instruct-4bit"
+    model_id = "mlx-community/EXAONE-3.5-32B-Instruct-8bit"
     print(f"\nAttempting to load model: {model_id}")
-    print("This may take several minutes and download ~4GB of data...")
+    print("This may take several minutes and download ~32GB of data...")
     
     try:
         start_time = time.time()

@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 
 PORT = 8004
 MAX_TOKENS_DEFAULT = 512
-MODEL_ID = "mlx-community/EXAONE-3.5-7.8B-Instruct-4bit"
+MODEL_ID = "mlx-community/EXAONE-3.5-32B-Instruct-8bit"
 
 
 class Message(BaseModel):
@@ -193,7 +193,7 @@ async def chat_completion(request: ChatCompletionRequest) -> ChatCompletionRespo
         return ChatCompletionResponse(
             choices=[ChatCompletionChoice(message=Message(role="assistant", content=response_text))],
             metadata={
-                "model_used": "exaone-3.5-7.8b-instruct-4bit-mlx",
+                "model_used": "exaone-3.5-32b-instruct-8bit-mlx",
                 "generation_ms": elapsed,
                 "prompt_length": len(prompt),
             }
