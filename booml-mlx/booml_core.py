@@ -136,7 +136,7 @@ class BoomLCore:
         
         # 4. 응답 생성 (실제 모델 라우터 사용)
         started = time.time()
-        response_text, model_used = self._generate_response(prompt, max_tokens=max_tokens, temperature=temperature)
+        response_text, model_used, token_stats = self._generate_response(prompt, max_tokens=max_tokens, temperature=temperature)
         generation_ms = round((time.time() - started) * 1000, 2)
         
         # 5. 대화 턴 저장 (어시스턴트 응답)
@@ -161,7 +161,8 @@ class BoomLCore:
             "response_length": len(response_text),
             "timestamp": datetime.now(KST).isoformat(),
             "model_used": model_used,
-            "generation_ms": generation_ms
+            "generation_ms": generation_ms,
+            "token_stats": token_stats,
         }
         
         logger.info(f"메시지 처리 완료: session={session_id}, prompt_len={len(prompt)}, response_len={len(response_text)}")
@@ -170,13 +171,24 @@ class BoomLCore:
     def process_feedback(self, session_id: str, feedback_type: str, 
                          content: str, context: Optional[str] = None):
         """피드백 처리"""
-        if session_id not in self.active_sessions:
-            logger.warning(f"존재하지 않는 세션 피드백: {session_id}")
-            return
+        # 세션이 없으면 user_id 추출 시도 (session_id 형식: feedback_session_{uuid} 또는 session_{uuid})
+        user_id = None
+        project_id = None
         
-        session_data = self.active_sessions[session_id]
-        user_id = session_data["user_id"]
-        project_id = session_data["project_id"]
+        if session_id in self.active_sessions:
+            session_data = self.active_sessions[session_id]
+            user_id = session_data["user_id"]
+            project_id = session_data["project_id"]
+        else:
+            # session_id에서 user_id 추출 시도 (형식: feedback_session_{user_id}_{uuid})
+            import re
+            match = re.search(r'feedback_session_([^_]+)', session_id)
+            if match:
+                user_id = match.group(1)
+            else:
+                # 기본 user_id 사용
+                user_id = "unknown_user"
+                logger.warning(f"세션 정보 없음, 기본 user_id 사용: {session_id}")
         
         # 정책 엔진을 통한 피드백 처리
         policy_engine.process_feedback(user_id, feedback_type, content, context, project_id)
@@ -184,7 +196,7 @@ class BoomLCore:
         # KPI 로깅
         kpi_logger.log_feedback(user_id, session_id, feedback_type)
         
-        logger.info(f"피드백 처리: session={session_id}, type={feedback_type}, content={content[:50]}...")
+        logger.info(f"피드백 처리: session={session_id}, user={user_id}, type={feedback_type}, content={content[:50]}...")
     
     def process_edit_request(self, session_id: str, original_message: str, 
                              edit_instruction: str):
@@ -251,22 +263,28 @@ class BoomLCore:
         
         return result
     
-    def _generate_response(self, prompt: str, max_tokens: int = 512, temperature: float = 0.7) -> Tuple[str, str]:
-        """응답 생성: 기본적으로 활성 모델 라우터를 통해 실제 MLX 생성 수행"""
+    def _generate_response(self, prompt: str, max_tokens: int = 512, temperature: float = 0.7) -> Tuple[str, str, Dict]:
+        """응답 생성: 기본적으로 활성 모델 라우터를 통해 실제 MLX 생성 수행
+        
+        Returns:
+            Tuple[응답_텍스트, 모델명, 토큰_통계]
+        """
         messages = [{"role": "user", "content": prompt}]
+        empty_stats = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0,
+                       "prompt_tps": 0.0, "generation_tps": 0.0, "peak_memory_gb": 0.0}
         try:
-            response_text, model_used = model_router.generate_with_strategy(
+            response_text, model_used, token_stats = model_router.generate_with_strategy(
                 messages,
                 max_tokens=max_tokens,
                 temperature=temperature
             )
             if response_text:
-                return response_text, model_used
+                return response_text, model_used, token_stats
         except Exception as e:
             logger.error(f"모델 라우터 응답 생성 실패: {e}")
         
         # 최후 폴백
-        return "현재 실제 모델 응답 생성에 실패했습니다. 잠시 후 다시 시도해주세요.", "fallback-error"
+        return "현재 실제 모델 응답 생성에 실패했습니다. 잠시 후 다시 시도해주세요.", "fallback-error", empty_stats
     
     def cleanup_old_sessions(self, max_age_hours: int = 24):
         """오래된 세션 정리"""

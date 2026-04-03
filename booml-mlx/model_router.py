@@ -134,8 +134,14 @@ class MLXAdapter(ModelAdapter):
     
     def generate(self, messages: List[Dict[str, str]], 
                  max_tokens: int = 512, 
-                 temperature: float = 0.7) -> str:
-        """응답 생성 - mlx_vlm 사용"""
+                 temperature: float = 0.7) -> Tuple[str, Dict]:
+        """응답 생성 - mlx_vlm 사용
+        
+        Returns:
+            Tuple[응답_텍스트, 토큰_통계]
+            토큰_통계: {"prompt_tokens": int, "completion_tokens": int, "total_tokens": int,
+                       "prompt_tps": float, "generation_tps": float, "peak_memory_gb": float}
+        """
         with self.lock:
             if not self.loaded:
                 self.load()
@@ -181,21 +187,27 @@ class MLXAdapter(ModelAdapter):
                 # 응답 생성
                 response = generate_func(self.model, self.tokenizer, **kwargs)
                 
-                # mlx_vlm은 GenerationResult 객체를 반환할 수 있음
-                # GenerationResult 객체 확인
+                # GenerationResult에서 텍스트 및 토큰 통계 추출
+                token_stats = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0,
+                               "prompt_tps": 0.0, "generation_tps": 0.0, "peak_memory_gb": 0.0}
+                
                 if hasattr(response, 'text'):
-                    # text 속성이 있는 경우 (mlx_vlm GenerationResult)
                     response_text = response.text
+                    # GenerationResult 토큰 통계 수집
+                    token_stats["prompt_tokens"] = getattr(response, 'prompt_tokens', 0)
+                    token_stats["completion_tokens"] = getattr(response, 'generation_tokens', 0)
+                    token_stats["total_tokens"] = getattr(response, 'total_tokens', 0) or (
+                        token_stats["prompt_tokens"] + token_stats["completion_tokens"]
+                    )
+                    token_stats["prompt_tps"] = getattr(response, 'prompt_tps', 0.0)
+                    token_stats["generation_tps"] = getattr(response, 'generation_tps', 0.0)
+                    token_stats["peak_memory_gb"] = getattr(response, 'peak_memory', 0.0)
                 elif hasattr(response, 'generated_text'):
-                    # generated_text 속성이 있는 경우
                     response_text = response.generated_text
                 elif isinstance(response, str):
-                    # 문자열인 경우
                     response_text = response
                 else:
-                    # 다른 타입인 경우 문자열로 변환
                     response_text = str(response)
-                    # GenerationResult 객체의 문자열 표현에서 텍스트 추출 시도
                     if 'GenerationResult(text=' in response_text:
                         import re
                         match = re.search(r"GenerationResult\(text='(.*?)',", response_text)
@@ -207,8 +219,13 @@ class MLXAdapter(ModelAdapter):
                 self.total_response_time += response_time
                 self.usage_count += 1
                 
-                logger.info(f"MLX 응답 생성 완료: {response_time:.2f}ms, {len(response_text)}자")
-                return response_text
+                logger.info(
+                    f"MLX 응답 생성 완료: {response_time:.2f}ms, {len(response_text)}자 | "
+                    f"prompt={token_stats['prompt_tokens']}tok "
+                    f"gen={token_stats['completion_tokens']}tok "
+                    f"({token_stats['generation_tps']:.1f} t/s)"
+                )
+                return response_text, token_stats
                 
             except Exception as e:
                 logger.error(f"MLX 응답 생성 실패: {e}")
@@ -275,9 +292,12 @@ class DummyAdapter(ModelAdapter):
     
     def generate(self, messages: List[Dict[str, str]], 
                  max_tokens: int = 512, 
-                 temperature: float = 0.7) -> str:
+                 temperature: float = 0.7) -> Tuple[str, Dict]:
         self.usage_count += 1
-        return f"이것은 {self.display_name}의 더미 응답입니다. 메시지: {len(messages)}개, 최대 토큰: {max_tokens}"
+        text = f"이것은 {self.display_name}의 더미 응답입니다. 메시지: {len(messages)}개, 최대 토큰: {max_tokens}"
+        stats = {"prompt_tokens": 10, "completion_tokens": 20, "total_tokens": 30,
+                 "prompt_tps": 0.0, "generation_tps": 0.0, "peak_memory_gb": 0.0}
+        return text, stats
     
     def get_metadata(self) -> ModelMetadata:
         return ModelMetadata(
@@ -454,23 +474,30 @@ class ModelRouter:
     def generate_with_strategy(self, messages: List[Dict[str, str]], 
                                strategy: Optional[RoutingStrategy] = None,
                                max_tokens: int = 512, 
-                               temperature: float = 0.7) -> Tuple[Optional[str], str]:
+                               temperature: float = 0.7) -> Tuple[Optional[str], str, Dict]:
         """라우팅 전략에 따른 응답 생성
         
         Returns:
-            Tuple[응답_텍스트, 사용된_모델_이름]
+            Tuple[응답_텍스트, 사용된_모델_이름, 토큰_통계]
         """
+        empty_stats = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0,
+                       "prompt_tps": 0.0, "generation_tps": 0.0, "peak_memory_gb": 0.0}
         adapter = self.route(strategy)
         if not adapter:
-            return None, "no_model_available"
+            return None, "no_model_available", empty_stats
         
         model_name = adapter.get_metadata().name
         try:
-            response = adapter.generate(messages, max_tokens, temperature)
-            return response, model_name
+            result = adapter.generate(messages, max_tokens, temperature)
+            # MLXAdapter는 (text, token_stats) 튜플 반환, DummyAdapter는 문자열 반환
+            if isinstance(result, tuple):
+                response_text, token_stats = result
+            else:
+                response_text, token_stats = result, empty_stats
+            return response_text, model_name, token_stats
         except Exception as e:
             logger.error(f"모델 응답 생성 실패 ({model_name}): {e}")
-            return None, model_name
+            return None, model_name, empty_stats
 
 
 # 전역 모델 레지스트리 및 라우터 인스턴스

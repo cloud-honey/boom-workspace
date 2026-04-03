@@ -150,9 +150,55 @@ async def get_news_summary() -> str:
     return "[뉴스]\n1. AI 기술 발전 속도 가속화\n2. 애플 실리콘 기반 ML 연구 활발\n3. 오픈소스 LLM 생태계 성장"
 
 
-async def get_realtime_data() -> str:
-    """실시간 데이터 수집 (주식, 날씨, 뉴스)"""
+async def web_search(query: str) -> str:
+    """DuckDuckGo 웹 검색 (간단한 구현)"""
     try:
+        import urllib.parse
+        import re
+        
+        # 검색어 URL 인코딩
+        encoded_query = urllib.parse.quote(query)
+        url = f"https://duckduckgo.com/html/?q={encoded_query}"
+        
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url, timeout=10, headers={
+                'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36'
+            }) as resp:
+                if resp.status == 200:
+                    html = await resp.text()
+                    
+                    # 간단한 결과 추출 (실제로는 더 정교한 파싱 필요)
+                    # DuckDuckGo 결과에서 텍스트 추출 시도
+                    import re
+                    # 결과 스니펫 찾기
+                    snippets = re.findall(r'class="result__snippet">(.*?)</a>', html, re.DOTALL)
+                    if snippets:
+                        # 첫 3개 결과 요약
+                        summary = []
+                        for i, snippet in enumerate(snippets[:3]):
+                            # HTML 태그 제거
+                            clean = re.sub(r'<.*?>', '', snippet)
+                            clean = clean.replace('&nbsp;', ' ').strip()
+                            if clean and len(clean) > 20:
+                                summary.append(f"{i+1}. {clean[:150]}...")
+                        
+                        if summary:
+                            return f"[웹 검색 결과]\n" + "\n".join(summary)
+                    
+                    return "웹 검색 결과를 찾을 수 없습니다."
+                else:
+                    return f"검색 실패 (HTTP {resp.status})"
+    except asyncio.TimeoutError:
+        return "검색 시간 초과"
+    except Exception as e:
+        logger.error(f"웹 검색 실패: {e}")
+        return "웹 검색 중 오류 발생"
+
+
+async def get_realtime_data(user_message: str = None) -> str:
+    """실시간 데이터 수집 (주식, 날씨, 뉴스) + 웹 검색"""
+    try:
+        # 기본 실시간 데이터
         stock_task = asyncio.create_task(get_stock_data())
         weather_task = asyncio.create_task(get_weather_data())
         news_task = asyncio.create_task(get_news_summary())
@@ -168,6 +214,32 @@ async def get_realtime_data() -> str:
             parts.append(weather)
         if not isinstance(news, Exception):
             parts.append(news)
+
+        # 사용자 메시지가 있고 검색이 필요한 경우 웹 검색 추가
+        search_results = ""
+        if user_message:
+            # 검색 키워드 감지
+            search_keywords = [
+                "검색", "찾아", "알려", "뭐야", "무엇", "어떻게", "방법",
+                "최신", "새소식", "뉴스", "정보", "조회", "확인"
+            ]
+            
+            # 질문 형태 감지 (5W1H)
+            question_words = ["누구", "어디", "언제", "왜", "어떻게", "무엇"]
+            
+            needs_search = (
+                any(keyword in user_message for keyword in search_keywords) or
+                any(user_message.endswith(word + "?") or user_message.endswith(word + "?") 
+                    for word in question_words) or
+                "?" in user_message  # 질문 형태
+            )
+            
+            if needs_search:
+                logger.info(f"웹 검색 실행: {user_message[:50]}...")
+                search_task = asyncio.create_task(web_search(user_message))
+                search_results = await search_task
+                if search_results and "웹 검색 결과" in search_results:
+                    parts.append(search_results)
 
         return "\n\n".join(parts) if parts else "실시간 데이터를 가져오지 못했습니다."
     except Exception as e:
@@ -193,10 +265,12 @@ class ChatCompletionRequest(BaseModel):
 
 
 class FeedbackRequest(BaseModel):
-    session_id: str = Field(..., description="세션 ID")
+    user_id: str = Field(..., description="사용자 ID")
     feedback_type: str = Field(..., description="피드백 타입 (positive/negative/implicit)")
     content: str = Field(..., description="피드백 내용")
     context: Optional[str] = Field(None, description="피드백 컨텍스트")
+    session_id: Optional[str] = Field(None, description="세션 ID (옵셔널)")
+    project_id: Optional[str] = Field(None, description="프로젝트 ID (옵셔널)")
 
 
 class UserStatsRequest(BaseModel):
@@ -386,8 +460,11 @@ async def chat_completion(request: ChatCompletionRequest) -> ChatCompletionRespo
         # 실시간 데이터 수집 (첫 번째 사용자 메시지인 경우)
         realtime_data = ""
         user_messages = [m for m in request.messages if m.role == "user"]
-        if user_messages and len(user_messages) == 1:
-            realtime_data = await get_realtime_data()
+        if user_messages:
+            # 마지막 사용자 메시지 가져오기
+            last_user_message = user_messages[-1].content
+            # 웹 검색 포함 실시간 데이터 수집
+            realtime_data = await get_realtime_data(last_user_message)
         
         # 세션 관리 (간단한 구현)
         user_id = "default_user"  # 실제 구현에서는 인증에서 가져옴
@@ -411,15 +488,27 @@ async def chat_completion(request: ChatCompletionRequest) -> ChatCompletionRespo
                 temperature=request.temperature
             )
             
+            # 토큰 통계 추출
+            token_stats = metadata.pop("token_stats", {})
+            usage = {
+                "prompt_tokens": token_stats.get("prompt_tokens", 0),
+                "completion_tokens": token_stats.get("completion_tokens", 0),
+                "total_tokens": token_stats.get("total_tokens", 0),
+            }
+            
             # 응답 메시지 구성
             response_message = Message(role="assistant", content=response_text)
             
             return ChatCompletionResponse(
                 choices=[ChatCompletionChoice(message=response_message)],
+                usage=usage,
                 metadata={
                     "session_id": session_id,
                     "architecture_enabled": True,
-                    "model_used": "booml-core",
+                    "model_used": metadata.get("model_used", "booml-core"),
+                    "generation_tps": token_stats.get("generation_tps", 0.0),
+                    "prompt_tps": token_stats.get("prompt_tps", 0.0),
+                    "peak_memory_gb": token_stats.get("peak_memory_gb", 0.0),
                     **metadata
                 }
             )
@@ -437,7 +526,7 @@ async def chat_completion(request: ChatCompletionRequest) -> ChatCompletionRespo
                 })
             
             # 모델 라우팅을 통한 응답 생성
-            response_text, model_used = model_router.generate_with_strategy(
+            response_text, model_used, token_stats = model_router.generate_with_strategy(
                 messages_dict,
                 strategy=routing_strategy,
                 max_tokens=request.max_tokens,
@@ -447,17 +536,27 @@ async def chat_completion(request: ChatCompletionRequest) -> ChatCompletionRespo
             if not response_text:
                 raise HTTPException(status_code=500, detail="모델 응답 생성 실패")
             
+            usage = {
+                "prompt_tokens": token_stats.get("prompt_tokens", 0),
+                "completion_tokens": token_stats.get("completion_tokens", 0),
+                "total_tokens": token_stats.get("total_tokens", 0),
+            }
+            
             # 응답 메시지 구성
             response_message = Message(role="assistant", content=response_text)
             
             return ChatCompletionResponse(
                 choices=[ChatCompletionChoice(message=response_message)],
+                usage=usage,
                 metadata={
                     "session_id": session_id,
                     "architecture_enabled": False,
                     "model_routing_enabled": True,
                     "model_used": model_used,
-                    "routing_strategy": routing_strategy.value if routing_strategy else "default"
+                    "routing_strategy": routing_strategy.value if routing_strategy else "default",
+                    "generation_tps": token_stats.get("generation_tps", 0.0),
+                    "prompt_tps": token_stats.get("prompt_tps", 0.0),
+                    "peak_memory_gb": token_stats.get("peak_memory_gb", 0.0),
                 }
             )
         
@@ -503,8 +602,26 @@ async def submit_feedback(request: FeedbackRequest):
         raise HTTPException(status_code=501, detail="아키텍처 모드가 비활성화되어 있습니다.")
     
     try:
+        # session_id가 없으면 user_id로 세션 생성 또는 찾기
+        session_id = request.session_id
+        if not session_id:
+            # user_id로 활성 세션 찾기
+            for sid, data in user_sessions.items():
+                if data.get("user_id") == request.user_id:
+                    session_id = sid
+                    break
+            
+            # 활성 세션이 없으면 새로 생성
+            if not session_id:
+                session_id = f"feedback_session_{uuid.uuid4().hex[:8]}"
+                user_sessions[session_id] = {
+                    "user_id": request.user_id,
+                    "project_id": request.project_id,
+                    "created_at": datetime.now(KST)
+                }
+        
         booml_core.process_feedback(
-            request.session_id,
+            session_id,
             request.feedback_type,
             request.content,
             request.context
@@ -585,6 +702,203 @@ async def list_models():
     except Exception as e:
         logger.error(f"모델 목록 조회 실패: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/v1/transcribe")
+async def transcribe_video(request: dict):
+    """영상/음성 파일 자막 추출 (mlx-whisper)
+    
+    Request body:
+        file_path: str — 절대 경로
+        model: str — tiny/base/small/medium/large-v3 (기본: tiny)
+        language: str — 언어 코드 (기본: auto)
+        output_format: str — srt/txt/json (기본: srt)
+    """
+    import subprocess
+    import os
+
+    file_path = request.get("file_path", "")
+    model = request.get("model", "tiny")
+    language = request.get("language", None)
+    output_format = request.get("output_format", "srt")
+
+    if not file_path:
+        raise HTTPException(status_code=400, detail="file_path is required")
+    if not os.path.exists(file_path):
+        raise HTTPException(status_code=404, detail=f"File not found: {file_path}")
+
+    output_dir = os.path.dirname(file_path)
+    base_name = os.path.splitext(os.path.basename(file_path))[0]
+    output_srt = os.path.join(output_dir, f"{base_name}.srt")
+
+    # 이미 srt 있으면 스킵
+    if os.path.exists(output_srt):
+        return {
+            "status": "skipped",
+            "message": "SRT already exists",
+            "srt_path": output_srt
+        }
+
+    whisper_bin = os.path.join(os.path.dirname(__file__), "venv/bin/mlx_whisper")
+    cmd = [
+        whisper_bin,
+        file_path,
+        "--model", f"mlx-community/whisper-{model}-mlx",
+        "--output-format", output_format,
+        "--output-dir", output_dir,
+        "--condition-on-previous-text", "False",  # 환각 방지: 이전 텍스트 conditioning 끄기
+        "--compression-ratio-threshold", "1.8",   # 반복 텍스트 감지 임계값
+        "--logprob-threshold", "-0.8",             # 낮은 확률 세그먼트 제거
+        "--no-speech-threshold", "0.6",            # 무음 구간 필터링
+    ]
+    if language:
+        cmd += ["--language", language]
+
+    logger.info(f"[transcribe] 시작: {file_path} (model={model})")
+    start_time = time.time()
+
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE
+        )
+        stdout, stderr = await proc.communicate()
+        elapsed = round(time.time() - start_time, 1)
+
+        if proc.returncode != 0:
+            logger.error(f"[transcribe] 실패: {stderr.decode()}")
+            raise HTTPException(status_code=500, detail=f"Whisper error: {stderr.decode()[-500:]}")
+
+        logger.info(f"[transcribe] 완료: {output_srt} ({elapsed}s)")
+        return {
+            "status": "done",
+            "file": file_path,
+            "srt_path": output_srt,
+            "model": model,
+            "elapsed_sec": elapsed
+        }
+    except Exception as e:
+        logger.error(f"[transcribe] 예외: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/v1/translate_srt")
+async def translate_srt(request: dict):
+    """SRT 자막 한국어 번역 (붐엘 Gemma 4 26B)
+    
+    Request body:
+        srt_path: str — 번역할 srt 파일 경로
+        output_path: str — 저장 경로 (기본: 원본_KO.srt)
+        batch_size: int — 한 번에 번역할 자막 수 (기본: 10)
+    """
+    import os, re
+
+    srt_path = request.get("srt_path", "")
+    batch_size = request.get("batch_size", 10)
+
+    if not srt_path:
+        raise HTTPException(status_code=400, detail="srt_path is required")
+    if not os.path.exists(srt_path):
+        raise HTTPException(status_code=404, detail=f"File not found: {srt_path}")
+
+    base = os.path.splitext(srt_path)[0]
+    output_path = request.get("output_path", f"{base}_KO.srt")
+
+    # SRT 파싱
+    with open(srt_path, 'r', encoding='utf-8', errors='replace') as f:
+        content = f.read()
+
+    # 자막 블록 파싱 (번호, 타임코드, 텍스트)
+    pattern = re.compile(
+        r'(\d+)\r?\n(\d{2}:\d{2}:\d{2}[,\.]\d{3}\s*-->\s*\d{2}:\d{2}:\d{2}[,\.]\d{3})\r?\n([\s\S]*?)(?=\r?\n\d+\r?\n|\Z)',
+        re.MULTILINE
+    )
+    blocks = pattern.findall(content)
+
+    if not blocks:
+        raise HTTPException(status_code=400, detail="SRT 파싱 실패 — 형식 확인 필요")
+
+    logger.info(f"[translate_srt] {len(blocks)}개 자막 블록 번역 시작: {srt_path}")
+    start_time = time.time()
+
+    translated_blocks = []
+
+    # 배치 단위 번역
+    for i in range(0, len(blocks), batch_size):
+        batch = blocks[i:i+batch_size]
+        texts = [b[2].strip().replace('\n', ' ') for b in batch]
+
+        # 빈 텍스트 스킵
+        non_empty = [(j, t) for j, t in enumerate(texts) if t]
+        if not non_empty:
+            for b in batch:
+                translated_blocks.append((b[0], b[1], b[2]))
+            continue
+
+        numbered = "\n".join(f"[{j+1}] {t}" for j, t in non_empty)
+        prompt = (
+            "You are a professional Japanese-to-Korean subtitle translator.\n"
+            "Translate each numbered subtitle naturally, preserving the nuance and context.\n"
+            "Do NOT translate literally — use natural Korean expressions.\n"
+            "Keep the same numbering format [N] in your response.\n"
+            "Output ONLY the translated lines, nothing else.\n\n"
+            f"{numbered}"
+        )
+
+        try:
+            # 자기 자신의 chat/completions 엔드포인트로 번역 요청
+            import aiohttp as _aiohttp
+            async with _aiohttp.ClientSession() as _sess:
+                async with _sess.post(
+                    "http://localhost:8000/v1/chat/completions",
+                    json={
+                        "model": "booml-mlx",
+                        "messages": [{"role": "user", "content": prompt}],
+                        "max_tokens": 2048,
+                        "temperature": 0.3,
+                        "stream": False
+                    },
+                    timeout=_aiohttp.ClientTimeout(total=180)
+                ) as _resp:
+                    _data = await _resp.json()
+                    translated_text = _data.get("choices", [{}])[0].get("message", {}).get("content", "")
+
+            # 번역 결과 파싱
+            trans_map = {}
+            for line in translated_text.strip().split('\n'):
+                m = re.match(r'\[(\d+)\]\s*(.*)', line.strip())
+                if m:
+                    trans_map[int(m.group(1))] = m.group(2).strip()
+
+            for k, (j, orig) in enumerate(non_empty):
+                texts[j] = trans_map.get(k+1, orig)
+
+        except Exception as e:
+            logger.warning(f"[translate_srt] 배치 {i//batch_size+1} 번역 실패: {e}")
+
+        for idx, b in enumerate(batch):
+            translated_blocks.append((b[0], b[1], texts[idx]))
+
+    # SRT 재조립
+    output_lines = []
+    for num, timecode, text in translated_blocks:
+        output_lines.append(f"{num}\n{timecode}\n{text}\n")
+    output_content = "\n".join(output_lines)
+
+    with open(output_path, 'w', encoding='utf-8') as f:
+        f.write(output_content)
+
+    elapsed = round(time.time() - start_time, 1)
+    logger.info(f"[translate_srt] 완료: {output_path} ({elapsed}s)")
+
+    return {
+        "status": "done",
+        "source": srt_path,
+        "output": output_path,
+        "blocks": len(translated_blocks),
+        "elapsed_sec": elapsed
+    }
 
 
 @app.get("/v1/architecture/status")
