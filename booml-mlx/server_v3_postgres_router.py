@@ -309,6 +309,10 @@ class HealthResponse(BaseModel):
     available_models: List[Dict[str, Any]] = []
     database_backend: str = "unknown"
     uptime_seconds: float = 0
+    # 봇 호환 필드
+    model_loaded: bool = False
+    turboquant: bool = True          # TurboQuant 3.5bit 항상 활성 상태
+    performance: Dict[str, Any] = {}
 
 
 class UserStatsResponse(BaseModel):
@@ -441,6 +445,23 @@ async def health() -> HealthResponse:
         routing_strategy = model_router.get_routing_strategy().value
         available_models = model_registry.list_models()
     
+    # 모델 로드 여부 및 성능 정보
+    model_loaded = False
+    performance = {}
+    if MODEL_ROUTING_ENABLED and active_model:
+        adapter = model_registry.get_adapter(active_model)
+        if adapter:
+            meta = adapter.get_metadata()
+            model_loaded = meta.is_loaded
+            performance = {
+                "model_id": meta.display_name,
+                "load_time": meta.load_time_ms / 1000,
+                "avg_response_ms": meta.avg_response_time_ms,
+                "token_per_second": meta.token_per_second,
+                "kv_cache_bits": 3.5,
+                "kv_quant_scheme": "turboquant",
+            }
+
     return HealthResponse(
         status="healthy",
         architecture_enabled=ARCHITECTURE_ENABLED,
@@ -449,7 +470,10 @@ async def health() -> HealthResponse:
         routing_strategy=routing_strategy,
         available_models=available_models,
         database_backend=db_backend,
-        uptime_seconds=uptime
+        uptime_seconds=uptime,
+        model_loaded=model_loaded,
+        turboquant=True,
+        performance=performance,
     )
 
 
