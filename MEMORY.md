@@ -14,7 +14,7 @@
 - **붐2**: deepseek/deepseek-chat — 복잡한 코딩
 - **붐3**: google/gemini-2.5-flash — 단순 수정, 문서, 자동화
 - **붐4**: ollama/qwen3-coder:30b-a3b-q4_K_M — QA/테스트 (맥미니, sandbox 없음, 33.6 t/s)
-- **붐엘(BoomL)**: MLX 전용 — Qwen3-14B-MLX-4bit + TurboQuant 4bit KV캐시 (✅ 텔레그램 봇 @boomllm_bot, 실시간 검색/날씨 지원)
+- **붐엘(BoomL)**: MLX 전용 — Gemma 4 26B A4B MoE MLX 4bit + mlx-vlm 0.4.3 (✅ 텔레그램 봇 @boomllm_bot, 69-72 t/s, ~16.8GB VRAM, TurboQuant 3.5bit 활성)
 
 ### DevTeam 그룹 (게이트웨이 18790, PM2: devteam-gateway)
 - 접속: Boomti_bot → devteam-bot(PM2) → 게이트웨이(18790)
@@ -26,7 +26,7 @@
 - **외부 접속**: Cloudflare Tunnel (abamti-local, ID: 7328e0f3-f992-4e84-b28a-4073be403823)
 - **일일 리포트**: 붐2 크론, 매일 07:30 KST + 18:00 KST, 텔레그램 자동 발송
 - **게이트웨이 힙**: 메인 4GB, devteam 3.5GB
-- **MLX 최적화**: ✅ Qwen3-14B + TurboQuant 4bit KV캐시, 실시간 검색/날씨, 붐엘 @boomllm_bot
+- **MLX 최적화**: ✅ Gemma 4 26B A4B MoE MLX + mlx-vlm 0.4.3, 69-72 t/s (TurboQuant 3.5bit), 붐엘 @boomllm_bot
 
 ## XPS 노드 연결 (2026-03-29 확정)
 - XPS → Tailscale → 맥미니 게이트웨이(18789) 노드로 연결
@@ -92,18 +92,48 @@
 | pj.abamti.com | http://localhost:8080 |
 | tboard-api.abamti.com | http://localhost:5002 |
 
-## 최근 주요 작업 (2026-03-29 ~ 2026-04-01)
+## 최근 주요 작업 (2026-03-29 ~ 2026-04-04)
+
+### 2026-04-04
+- **붐엘 자막 추출 완료**: ssis-313-C 일본어 → 한국어 번역 (ssis-313-C_KO.srt, 9,319줄)
+- **붐엘 TurboQuant 3.5bit 활성화**:
+  - mlx_vlm 내장 TurboQuant 사용 (kv_bits=3.5, kv_quant_scheme="turboquant")
+  - 기존 try/except로 묻혀있던 코드 수정 → 실제 적용
+  - KV 캐시 4.6x 압축, 생성 속도 69-72 t/s
+- **붐엘 토큰 통계 수집 수정**:
+  - MLXAdapter.generate() → (text, token_stats) 튜플 반환
+  - usage.prompt_tokens, completion_tokens, generation_tps, peak_memory_gb 정상 수집
+  - 수정 파일: model_router.py, booml_core.py, server_v3_postgres_router.py
+- **붐엘 /status TurboQuant 표시 수정**:
+  - HealthResponse에 turboquant/model_loaded/performance 필드 추가
+  - /status → TurboQuant: ✅ 활성 (4.6x 메모리 절약) 정상 표시
+### 2026-04-03
+- **붐엘 Gemma 4 26B A4B MoE MLX 모델 업그레이드 완료**:
+  - 모델: `mlx-community/gemma-4-26b-a4b-it-4bit` (26B Mixture of Experts)
+  - 용량: 14GB 다운로드 완료 (3개 safetensors 파일)
+  - 라이브러리: mlx-vlm 0.4.3 설치 (mlx-lm 0.31.1은 Gemma 4 미지원)
+  - 성능: 74.354 tokens/sec, 16.5GB VRAM 사용
+  - 아키텍처: 8개 전문가 MoE, 2개 활성화
+  - 서버: `booml-mlx/server_v3_postgres_router.py` (포트 8000)
+  - 봇: `booml-telegram-bot/booml-bot-v2-enhanced.py` (@boomllm_bot)
+  - 응답 품질: 한국어 지원, 고품질 MoE 아키텍처
+
+- **붐엘 피드백 시스템 구현 완료**:
+  - 피드백 API: `/v1/feedback` 엔드포인트
+  - 버튼 피드백: 👍 좋아요 / 👎 싫어요
+  - 텍스트 피드백: 키워드 기반 자동 감지
+  - 세션 관리: `user_id` → `session_id` 자동 매핑
+
+- **붐엘 실시간 웹 검색 기능 추가**:
+  - 검색 엔진: DuckDuckGo HTML 파싱
+  - 검색 감지: 키워드 기반 자동 실행
+  - 실시간 데이터: 주식, 날씨, 뉴스 통합
+  - 검색 키워드: "검색", "찾아", "알려", "뭐야", 질문 형태 등
+
 ### 2026-04-01
 - **데일리 리포트 시장 데이터 소스 교체**: 코스피(네이버 금융), 비트코인(CoinGecko) 추가
 - **맥미니 DarkWake 잠자기 문제 해결**: `sudo pmset -a displaysleep 10 sleep 0 disksleep 0 powernap 0 womp 1 ttyskeepawake 1 tcpkeepalive 1`
 - **대시보드 히스토리 버그 수정**: content 파싱 빈줄 버그, __INITIAL_STATE__ 주입 수정
-- **붐엘 Qwen3-14B 업그레이드 + TurboQuant + 실시간 검색**:
-  - Qwen2.5-7B → Qwen3-14B-MLX-4bit (품질 대폭 향상)
-  - KV캐시 4bit 양자화 (mlx-lm 네이티브 kv_bits, 4.6x 메모리 절약)
-  - 실시간 웹 검색 (DuckDuckGo) + 날씨 (wttr.in) 추가
-  - 시스템 프롬프트에 현재 날짜/시간 주입
-  - 서버: `booml-mlx/server_v2.py`, 봇: `booml-telegram-bot/booml-bot-v2.py`
-  - 속도: ~16 t/s (14B 모델 + KV양자화)
 
 ### 2026-03-31
 - **Cloudflare Tunnel 근본 정리**: 원격 관리 터널 → 로컬 관리 터널 교체
@@ -134,10 +164,12 @@
 - **체크 항목**: XPS 노드 상태, 모델 폴백 감지, DevTeam 에스컬레이션
 - **MLX 서버**: localhost:8000 (server_v2.py)
 
-## 로컬 LLM 전략 (2026-04-01)
-- **MLX**: 모든 로컬 LLM 작업 (하트비트, 붐엘 봇 등)
+## 로컬 LLM 전략 (2026-04-03)
+- **MLX (mlx-vlm)**: Gemma 4 26B A4B MoE 모델 (붐엘 메인)
 - **Ollama**: 임베딩 전용 (nomic-embed-text, memorySearch)
 - **booml-mlx 프로바이더**: openclaw.json에 등록됨 (localhost:8000/v1)
+- **성능**: 74.354 tokens/sec (Gemma 4 26B MoE MLX)
+- **기능**: 실시간 검색, 피드백 시스템, 텔레그램 통합
 
 ## 붐엘 공통 규칙 (2026-04-02 추가)
 - 붐엘 규칙은 세션 대화로만 두지 말고 장기 메모리와 구현 로직에 함께 남길 것.
