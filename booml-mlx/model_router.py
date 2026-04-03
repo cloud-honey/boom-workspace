@@ -73,10 +73,10 @@ class ModelAdapter(ABC):
 
 
 class MLXAdapter(ModelAdapter):
-    """MLX 모델 어댑터 (현재 구현)"""
+    """MLX 모델 어댑터 (현재 구현) - mlx_vlm 사용"""
     
-    def __init__(self, model_id: str = "Qwen/Qwen3-14B-MLX-4bit", 
-                 display_name: str = "Qwen3 14B MLX"):
+    def __init__(self, model_id: str = "mlx-community/gemma-4-26b-a4b-it-4bit", 
+                 display_name: str = "Gemma 4 26B A4B MoE MLX"):
         self.model_id = model_id
         self.display_name = display_name
         self.model = None
@@ -88,24 +88,34 @@ class MLXAdapter(ModelAdapter):
         self.lock = threading.RLock()
     
     def load(self):
-        """MLX 모델 로드"""
+        """MLX 모델 로드 - mlx_vlm 사용"""
         with self.lock:
             if self.loaded:
                 return
             
-            logger.info(f"MLX 모델 로드 중: {self.model_id}")
+            logger.info(f"MLX 모델 로드 중 (mlx_vlm): {self.model_id}")
             start = time.time()
             
             try:
-                from mlx_lm import load
+                # mlx_vlm으로 모델 로드
+                from mlx_vlm import load
                 self.model, self.tokenizer = load(self.model_id)
                 self.loaded = True
                 self.load_time = (time.time() - start) * 1000  # ms
                 
-                logger.info(f"MLX 모델 로드 완료: {self.load_time:.2f}ms")
+                logger.info(f"MLX 모델 로드 완료 (mlx_vlm): {self.load_time:.2f}ms")
             except ImportError as e:
-                logger.error(f"MLX 라이브러리 임포트 실패: {e}")
-                raise
+                logger.error(f"mlx_vlm 라이브러리 임포트 실패: {e}")
+                # mlx_lm으로 폴백 시도
+                try:
+                    from mlx_lm import load as load_lm
+                    self.model, self.tokenizer = load_lm(self.model_id)
+                    self.loaded = True
+                    self.load_time = (time.time() - start) * 1000
+                    logger.info(f"MLX 모델 로드 완료 (mlx_lm 폴백): {self.load_time:.2f}ms")
+                except Exception as e2:
+                    logger.error(f"MLX 모델 로드 실패 (폴백도 실패): {e2}")
+                    raise
             except Exception as e:
                 logger.error(f"MLX 모델 로드 실패: {e}")
                 raise
@@ -125,7 +135,7 @@ class MLXAdapter(ModelAdapter):
     def generate(self, messages: List[Dict[str, str]], 
                  max_tokens: int = 512, 
                  temperature: float = 0.7) -> str:
-        """응답 생성"""
+        """응답 생성 - mlx_vlm 사용"""
         with self.lock:
             if not self.loaded:
                 self.load()
@@ -133,7 +143,15 @@ class MLXAdapter(ModelAdapter):
             start_time = time.time()
             
             try:
-                from mlx_lm import generate
+                # mlx_vlm 또는 mlx_lm으로 생성 시도
+                try:
+                    from mlx_vlm import generate as generate_vlm
+                    generate_func = generate_vlm
+                    logger.debug("mlx_vlm.generate 사용")
+                except ImportError:
+                    from mlx_lm import generate as generate_lm
+                    generate_func = generate_lm
+                    logger.debug("mlx_lm.generate 사용 (폴백)")
                 
                 # 메시지 포맷팅
                 if self.tokenizer.chat_template is not None:
@@ -151,25 +169,46 @@ class MLXAdapter(ModelAdapter):
                     "prompt": prompt,
                     "max_tokens": max_tokens,
                     "verbose": False,
+                    "temperature": temperature,
                 }
                 
-                # TurboQuant 설정 (사용 가능한 경우)
-                try:
-                    kwargs["kv_bits"] = 4
-                    kwargs["kv_group_size"] = 64
-                except:
-                    pass
+                # TurboQuant KV 캐시 압축 활성화
+                # kv_quant_scheme="turboquant" 필수 — 없으면 uniform으로 폴백됨
+                # 3.5비트: 메모리 절약 + 품질 균형 (4.6x 압축)
+                kwargs["kv_bits"] = 3.5
+                kwargs["kv_quant_scheme"] = "turboquant"
                 
                 # 응답 생성
-                response = generate(self.model, self.tokenizer, **kwargs)
+                response = generate_func(self.model, self.tokenizer, **kwargs)
+                
+                # mlx_vlm은 GenerationResult 객체를 반환할 수 있음
+                # GenerationResult 객체 확인
+                if hasattr(response, 'text'):
+                    # text 속성이 있는 경우 (mlx_vlm GenerationResult)
+                    response_text = response.text
+                elif hasattr(response, 'generated_text'):
+                    # generated_text 속성이 있는 경우
+                    response_text = response.generated_text
+                elif isinstance(response, str):
+                    # 문자열인 경우
+                    response_text = response
+                else:
+                    # 다른 타입인 경우 문자열로 변환
+                    response_text = str(response)
+                    # GenerationResult 객체의 문자열 표현에서 텍스트 추출 시도
+                    if 'GenerationResult(text=' in response_text:
+                        import re
+                        match = re.search(r"GenerationResult\(text='(.*?)',", response_text)
+                        if match:
+                            response_text = match.group(1)
                 
                 # 성능 통계 업데이트
                 response_time = (time.time() - start_time) * 1000  # ms
                 self.total_response_time += response_time
                 self.usage_count += 1
                 
-                logger.info(f"MLX 응답 생성 완료: {response_time:.2f}ms, {len(response)}자")
-                return response
+                logger.info(f"MLX 응답 생성 완료: {response_time:.2f}ms, {len(response_text)}자")
+                return response_text
                 
             except Exception as e:
                 logger.error(f"MLX 응답 생성 실패: {e}")
@@ -445,8 +484,8 @@ def initialize_default_models():
     try:
         mlx_adapter = MLXAdapter()
         if mlx_adapter.is_available():
-            model_registry.register("qwen3-14b-mlx", mlx_adapter, set_active=True)
-            logger.info("MLX 모델 등록 완료 (활성 모델로 설정)")
+            model_registry.register("gemma-4-26b-a4b-it-4bit", mlx_adapter, set_active=True)
+            logger.info("Gemma 4 26B A4B MoE MLX 모델 등록 완료 (활성 모델로 설정)")
         else:
             logger.warning("MLX 모델 사용 불가, 등록 건너뜀")
     except Exception as e:
