@@ -143,6 +143,29 @@ async def get_user_stats(user_id: int, days: int = 7):
         return None
 
 
+async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """/h — 도움말"""
+    msg = (
+        "🤖 *붐엘 명령어 도움말*\n\n"
+        "💬 *대화*\n"
+        "• 그냥 메시지 입력 → 붐엘 AI 응답\n\n"
+        "🎬 *자막 추출*\n"
+        "• `자막추출 [파일경로]` — 단일 파일 자막 추출\n"
+        "• `/transcribe` — 기본 나스 폴더 전체 처리\n"
+        "• `/transcribe [폴더경로]` — 지정 폴더 전체 처리\n"
+        "• `/transcribe [폴더경로] base` — base 모델로 처리\n\n"
+        "📊 *상태 & 통계*\n"
+        "• `/status` — 서버 상태 확인\n"
+        "• `/stats` — 사용 통계\n"
+        "• `/benchmark` — 성능 테스트\n\n"
+        "👍 *피드백*\n"
+        "• `/feedback` — 피드백 안내\n"
+        "• '좋아', '별로' 등 키워드로 자동 피드백\n\n"
+        "❓ `/h` — 이 도움말"
+    )
+    await update.message.reply_text(msg, parse_mode='Markdown')
+
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     user_id = user.id
@@ -300,12 +323,280 @@ async def benchmark(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(msg, parse_mode='Markdown')
 
 
+async def transcribe_file(file_path: str, model: str = "base", language: str = "ja") -> dict:
+    """붐엘 서버에 자막 추출 요청"""
+    async with aiohttp.ClientSession() as session:
+        async with session.post(
+            f"{MLX_SERVER_URL}/v1/transcribe",
+            json={"file_path": file_path, "model": model, "language": language, "output_format": "srt"},
+            timeout=aiohttp.ClientTimeout(total=3600)
+        ) as resp:
+            return await resp.json()
+
+
+async def translate_srt_file(srt_path: str) -> dict:
+    """붐엘 서버에 SRT 한국어 번역 요청"""
+    async with aiohttp.ClientSession() as session:
+        async with session.post(
+            f"{MLX_SERVER_URL}/v1/translate_srt",
+            json={"srt_path": srt_path, "batch_size": 10},
+            timeout=aiohttp.ClientTimeout(total=7200)
+        ) as resp:
+            return await resp.json()
+
+
+async def scan_nas_videos(folder: str) -> list:
+    """나스 폴더 하위 영상 파일 목록 반환 (srt 없는 것만)"""
+    import os
+    video_exts = {'.mp4', '.mkv', '.avi', '.mov', '.m4v', '.wmv'}
+    videos = []
+    for root, dirs, files in os.walk(folder):
+        for f in sorted(files):
+            ext = os.path.splitext(f)[1].lower()
+            if ext in video_exts:
+                full_path = os.path.join(root, f)
+                srt_path = os.path.splitext(full_path)[0] + '.srt'
+                if not os.path.exists(srt_path):
+                    videos.append(full_path)
+    return videos
+
+
+PIPELINE_STATE_FILE = "/Users/sykim/.openclaw/workspace/logs/transcribe_pipeline.json"
+
+def load_pipeline_state() -> dict:
+    """파이프라인 상태 불러오기"""
+    import json, os
+    if os.path.exists(PIPELINE_STATE_FILE):
+        try:
+            with open(PIPELINE_STATE_FILE, 'r') as f:
+                return json.load(f)
+        except:
+            pass
+    return {"done": [], "failed": []}
+
+def save_pipeline_state(state: dict):
+    """파이프라인 상태 저장"""
+    import json, os
+    os.makedirs(os.path.dirname(PIPELINE_STATE_FILE), exist_ok=True)
+    with open(PIPELINE_STATE_FILE, 'w') as f:
+        json.dump(state, f, ensure_ascii=False, indent=2)
+
+
+async def cmd_transcribe_scan(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """/transcribe [폴더경로] [모델] [N개] — 나스 폴더 영상 N개씩 순차 자막 추출 (이어서 처리)"""
+    args = list(context.args) if context.args else []
+
+    # 모델 파싱
+    valid_models = {"tiny", "base", "small", "medium", "large-v3"}
+    model = "tiny"
+    if args and args[-1].lower() in valid_models:
+        model = args[-1].lower()
+        args = args[:-1]
+
+    # 개수 파싱
+    limit = 5
+    if args and args[-1].isdigit():
+        limit = int(args[-1])
+        args = args[:-1]
+
+    folder = ' '.join(args) if args else '/Volumes/seot401/torrent'
+
+    import os
+    if not os.path.exists(folder):
+        await update.message.reply_text(f"❌ 경로 없음: `{folder}`", parse_mode='Markdown')
+        return
+
+    # 파일 경로를 직접 준 경우 단일 파일 처리
+    video_exts = {'.mp4', '.mkv', '.avi', '.mov', '.m4v', '.wmv'}
+    if os.path.isfile(folder) and os.path.splitext(folder)[1].lower() in video_exts:
+        srt_path = os.path.splitext(folder)[0] + '.srt'
+        if os.path.exists(srt_path):
+            await update.message.reply_text(f"⏭️ 이미 자막 있음: `{os.path.basename(srt_path)}`", parse_mode='Markdown')
+            return
+        msg = await update.message.reply_text(f"⏳ `{os.path.basename(folder)}` 처리 중...", parse_mode='Markdown')
+        result = await transcribe_file(folder, model=model)
+        status_val = result.get("status", "")
+        if status_val == "done":
+            srt_out = result.get("srt_path", "")
+            await msg.edit_text(f"✅ 자막 추출 완료!\n`{os.path.basename(srt_out)}`", parse_mode='Markdown')
+            if srt_out and os.path.exists(srt_out):
+                tr = await translate_srt_file(srt_out)
+                if tr.get("status") == "done":
+                    ko_path = tr.get("ko_srt_path", "")
+                    await update.message.reply_text(f"🇰🇷 번역 완료!\n`{os.path.basename(ko_path)}`", parse_mode='Markdown')
+        elif status_val == "skipped":
+            await msg.edit_text(f"⏭️ 이미 처리됨: `{os.path.basename(folder)}`", parse_mode='Markdown')
+        else:
+            await msg.edit_text(f"❌ 실패: {result.get('error', '알 수 없는 오류')}", parse_mode='Markdown')
+        return
+
+    msg = await update.message.reply_text(f"🔍 스캔 중: `{folder}`", parse_mode='Markdown')
+    all_videos = await scan_nas_videos(folder)
+
+    if not all_videos:
+        await msg.edit_text("✅ 자막 없는 영상 파일 없음 (모두 처리 완료)")
+        return
+
+    # 파이프라인 상태 로드 — 이미 처리된 파일 제외
+    state = load_pipeline_state()
+    done_set = set(state.get("done", []))
+    pending = [v for v in all_videos if v not in done_set]
+
+    total_remaining = len(pending)
+    batch = pending[:limit]
+
+    list_text = (
+        f"📋 *자막 추출 파이프라인*\n\n"
+        f"• 전체 미처리: {total_remaining}개\n"
+        f"• 이번 배치: {len(batch)}개 (모델: {model})\n\n"
+    )
+    for i, v in enumerate(batch, 1):
+        list_text += f"{i}. `{os.path.basename(v)}`\n"
+    if total_remaining > limit:
+        list_text += f"\n_나머지 {total_remaining - limit}개는 다음 /transcribe 실행 시 처리_"
+
+    await msg.edit_text(list_text, parse_mode='Markdown')
+
+    success, skipped, failed = 0, 0, 0
+    for i, video_path in enumerate(batch, 1):
+        fname = os.path.basename(video_path)
+        prog_msg = await update.message.reply_text(
+            f"⏳ [{i}/{len(batch)}] `{fname}` 처리 중...", parse_mode='Markdown'
+        )
+
+        try:
+            result = await transcribe_file(video_path, model=model)
+            status_val = result.get("status", "")
+
+            if status_val == "done":
+                elapsed = result.get("elapsed_sec", 0)
+                srt_path = result.get("srt_path", "")
+                state["done"].append(video_path)
+                save_pipeline_state(state)
+                await prog_msg.edit_text(
+                    f"✅ [{i}/{len(batch)}] 자막 추출 완료!\n"
+                    f"📄 `{fname}` ({elapsed}초)\n"
+                    f"🔄 한국어 번역 중...",
+                    parse_mode='Markdown'
+                )
+                # 자동 한국어 번역
+                try:
+                    tr = await translate_srt_file(srt_path)
+                    ko_path = tr.get("output", "")
+                    tr_elapsed = tr.get("elapsed_sec", 0)
+                    await prog_msg.edit_text(
+                        f"✅ [{i}/{len(batch)}] 완료!\n"
+                        f"📄 `{fname}`\n"
+                        f"⏱ 추출 {elapsed}초 + 번역 {tr_elapsed}초\n"
+                        f"🇯🇵 `{os.path.basename(srt_path)}`\n"
+                        f"🇰🇷 `{os.path.basename(ko_path)}`",
+                        parse_mode='Markdown'
+                    )
+                except Exception as te:
+                    await prog_msg.edit_text(
+                        f"✅ [{i}/{len(batch)}] 자막 완료 (번역 실패)\n"
+                        f"📄 `{fname}`\n`{str(te)[:100]}`",
+                        parse_mode='Markdown'
+                    )
+                success += 1
+            elif status_val == "skipped":
+                state["done"].append(video_path)
+                save_pipeline_state(state)
+                await prog_msg.edit_text(
+                    f"⏭ [{i}/{len(batch)}] 스킵 (이미 있음): `{fname}`", parse_mode='Markdown'
+                )
+                skipped += 1
+            else:
+                state.setdefault("failed", []).append(video_path)
+                save_pipeline_state(state)
+                await prog_msg.edit_text(
+                    f"❌ [{i}/{len(batch)}] 실패: `{fname}`", parse_mode='Markdown'
+                )
+                failed += 1
+
+        except Exception as e:
+            state.setdefault("failed", []).append(video_path)
+            save_pipeline_state(state)
+            await prog_msg.edit_text(
+                f"❌ [{i}/{len(batch)}] 오류: `{fname}`\n`{str(e)[:200]}`", parse_mode='Markdown'
+            )
+            failed += 1
+
+    remaining_after = total_remaining - len(batch)
+    summary = (
+        f"🎬 배치 완료!\n"
+        f"✅ 성공: {success}개  ⏭ 스킵: {skipped}개  ❌ 실패: {failed}개\n\n"
+    )
+    if remaining_after > 0:
+        summary += f"📌 남은 파일: {remaining_after}개\n`/transcribe {limit}` 으로 이어서 처리하세요"
+    else:
+        summary += "🏁 전체 완료!"
+
+    await update.message.reply_text(summary, parse_mode='Markdown')
+
+
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_msg = update.message.text
     user_name = update.effective_user.first_name
     user_id = update.effective_user.id
 
     logger.info(f"📨 {user_name}({user_id}): '{user_msg[:50]}'")
+
+    # 자막추출 명령 처리
+    if user_msg.strip().startswith("자막추출"):
+        parts = user_msg.strip().split(None, 1)
+        if len(parts) < 2:
+            await update.message.reply_text("❌ 사용법: `자막추출 /Volumes/seot401/torrent/폴더명/파일.mp4`", parse_mode='Markdown')
+            return
+
+        file_path = parts[1].strip()
+        import os
+        if not os.path.exists(file_path):
+            await update.message.reply_text(f"❌ 파일 없음: `{file_path}`", parse_mode='Markdown')
+            return
+
+        srt_path = os.path.splitext(file_path)[0] + '.srt'
+        if os.path.exists(srt_path):
+            await update.message.reply_text(f"⏭ 이미 자막 있음: `{srt_path}`", parse_mode='Markdown')
+            return
+
+        fname = os.path.basename(file_path)
+        size_gb = os.path.getsize(file_path) / 1024**3
+        msg = await update.message.reply_text(
+            f"⏳ 자막 추출 시작\n📄 `{fname}` ({size_gb:.1f}GB)\n모델: tiny",
+            parse_mode='Markdown'
+        )
+
+        try:
+            result = await transcribe_file(file_path, model="base")
+            status = result.get("status", "")
+            if status == "done":
+                elapsed = result.get("elapsed_sec", 0)
+                await msg.edit_text(
+                    f"✅ 자막 추출 완료!\n📄 `{fname}` ({elapsed}초)\n🔄 한국어 번역 중...",
+                    parse_mode='Markdown'
+                )
+                try:
+                    tr = await translate_srt_file(srt_path)
+                    ko_path = tr.get("output", "")
+                    tr_elapsed = tr.get("elapsed_sec", 0)
+                    await msg.edit_text(
+                        f"✅ 완료!\n📄 `{fname}`\n"
+                        f"⏱ 추출 {elapsed}초 + 번역 {tr_elapsed}초\n"
+                        f"🇯🇵 `{os.path.basename(srt_path)}`\n"
+                        f"🇰🇷 `{os.path.basename(ko_path)}`",
+                        parse_mode='Markdown'
+                    )
+                except Exception as te:
+                    await msg.edit_text(
+                        f"✅ 자막 완료 (번역 실패)\n📄 `{fname}`\n`{str(te)[:100]}`",
+                        parse_mode='Markdown'
+                    )
+            else:
+                await msg.edit_text(f"❌ 실패: `{result}`", parse_mode='Markdown')
+        except Exception as e:
+            await msg.edit_text(f"❌ 오류: `{str(e)[:300]}`", parse_mode='Markdown')
+        return
 
     # 피드백 처리 (특정 키워드)
     feedback_keywords = {
@@ -462,6 +753,8 @@ def main():
     app.add_handler(CommandHandler("stats", stats))
     app.add_handler(CommandHandler("feedback", feedback_info))
     app.add_handler(CommandHandler("benchmark", benchmark))
+    app.add_handler(CommandHandler("transcribe", cmd_transcribe_scan))
+    app.add_handler(CommandHandler("h", help_cmd))
     
     # 메시지 핸들러
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
@@ -469,6 +762,24 @@ def main():
     # 콜백 쿼리 핸들러 (피드백 버튼)
     app.add_handler(CallbackQueryHandler(handle_feedback_callback))
     
+    # "/" 메뉴 등록
+    from telegram import BotCommand
+    commands = [
+        BotCommand("h", "도움말"),
+        BotCommand("transcribe", "나스 폴더 자막 추출 [폴더경로] [모델]"),
+        BotCommand("status", "서버 상태 확인"),
+        BotCommand("stats", "사용 통계"),
+        BotCommand("benchmark", "성능 테스트"),
+        BotCommand("feedback", "피드백 안내"),
+        BotCommand("start", "봇 시작"),
+    ]
+
+    async def post_init(application):
+        await application.bot.set_my_commands(commands)
+        print("✅ 봇 명령어 메뉴 등록 완료")
+
+    app.post_init = post_init
+
     print("🤖 붐엘 봇 v2 아키텍처 통합 시작: @boomllm_bot")
     print(f"서버 URL: {MLX_SERVER_URL}")
     app.run_polling(allowed_updates=Update.ALL_TYPES)
