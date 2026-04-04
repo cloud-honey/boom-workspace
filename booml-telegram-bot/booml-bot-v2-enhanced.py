@@ -910,6 +910,47 @@ async def handle_feedback_callback(update: Update, context: ContextTypes.DEFAULT
         await query.edit_message_text("❌ 피드백 처리 실패")
 
 
+async def cmd_translate(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """/번역 [srt파일경로] — SRT 파일 한국어 번역"""
+    import os
+    args = context.args
+    if not args:
+        await update.message.reply_text(
+            "사용법: `/번역 /Volumes/seot401/torrent/파일명.srt`\n\n"
+            "SRT 파일을 한국어로 번역합니다.",
+            parse_mode='Markdown'
+        )
+        return
+
+    srt_path = ' '.join(args).strip()
+    if not os.path.exists(srt_path):
+        await update.message.reply_text(f"❌ 파일 없음: `{srt_path}`", parse_mode='Markdown')
+        return
+
+    if not srt_path.endswith('.srt'):
+        await update.message.reply_text("❌ .srt 파일만 지원합니다.", parse_mode='Markdown')
+        return
+
+    fname = os.path.basename(srt_path)
+    msg = await update.message.reply_text(f"🔄 번역 중...\n📄 `{fname}`", parse_mode='Markdown')
+
+    result = await translate_srt_file(srt_path)
+    if result.get("status") == "done":
+        ko_path = result.get("output", result.get("ko_srt_path", ""))
+        elapsed = result.get("elapsed_sec", 0)
+        blocks = result.get("blocks", 0)
+        ko_fname = os.path.basename(ko_path) if ko_path else "-"
+        await msg.edit_text(
+            f"🇰🇷 번역 완료!\n"
+            f"📄 `{ko_fname}`\n"
+            f"⏱ {elapsed}초  📝 {blocks}블록",
+            parse_mode='Markdown'
+        )
+    else:
+        err = result.get("error", "알 수 없는 오류")
+        await msg.edit_text(f"❌ 번역 실패\n`{str(err)[:300]}`", parse_mode='Markdown')
+
+
 def main():
     app = Application.builder().token(BOT_TOKEN).build()
     
@@ -920,6 +961,7 @@ def main():
     app.add_handler(CommandHandler("feedback", feedback_info))
     app.add_handler(CommandHandler("benchmark", benchmark))
     app.add_handler(CommandHandler("transcribe", cmd_transcribe_scan))
+    app.add_handler(CommandHandler("translate", cmd_translate))
     app.add_handler(CommandHandler("cancel", cancel_task))
     app.add_handler(CommandHandler("h", help_cmd))
     
@@ -934,6 +976,7 @@ def main():
     commands = [
         BotCommand("h", "도움말"),
         BotCommand("transcribe", "나스 폴더 자막 추출 [폴더경로] [모델]"),
+        BotCommand("translate", "SRT 파일 한국어 번역 [srt경로]"),
         BotCommand("cancel", "진행 중인 작업 취소"),
         BotCommand("status", "서버 상태 확인"),
         BotCommand("stats", "사용 통계"),
