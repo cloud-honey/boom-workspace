@@ -848,15 +848,38 @@ async def transcribe_video(request: dict):
         raise HTTPException(status_code=404, detail=f"File not found: {file_path}")
 
     output_dir = os.path.dirname(file_path)
-    base_name = os.path.splitext(os.path.basename(file_path))[0]
+    file_basename = os.path.basename(file_path)
+
+    # mlx_whisper는 파일명에서 확장자를 직접 파싱함
+    # 예: "foo.com.mp4" → "foo.com.srt" (splitext 기준)
+    # 예: "bar.Uncen.mov" → "bar.Uncen.srt"
+    # 따라서 서버도 동일하게 splitext 1회만 적용해야 함
+    base_name = os.path.splitext(file_basename)[0]
     output_srt = os.path.join(output_dir, f"{base_name}.srt")
 
-    # 이미 srt 있으면 스킵
-    if os.path.exists(output_srt):
+    def find_actual_srt(directory: str, before_mtime: float) -> str | None:
+        """추출 후 새로 생긴 SRT 파일을 찾음 (파일명 예측 실패 시 폴백)"""
+        try:
+            for f in os.listdir(directory):
+                if f.endswith('.srt'):
+                    fpath = os.path.join(directory, f)
+                    if os.path.getmtime(fpath) >= before_mtime - 1:
+                        return fpath
+        except Exception:
+            pass
+        return None
+
+    # 이미 srt 있으면 스킵 (예측 경로 + 실제 폴더 내 srt 존재 여부 모두 확인)
+    existing_srts = [
+        f for f in os.listdir(output_dir)
+        if f.endswith('.srt') and os.path.splitext(f)[0] == base_name
+    ] if os.path.isdir(output_dir) else []
+    if os.path.exists(output_srt) or existing_srts:
+        actual = output_srt if os.path.exists(output_srt) else os.path.join(output_dir, existing_srts[0])
         return {
             "status": "skipped",
             "message": "SRT already exists",
-            "srt_path": output_srt
+            "srt_path": actual
         }
 
     whisper_bin = os.path.join(os.path.dirname(__file__), "venv/bin/mlx_whisper")
@@ -866,18 +889,19 @@ async def transcribe_video(request: dict):
         "--model", f"mlx-community/whisper-{model}-mlx",
         "--output-format", output_format,
         "--output-dir", output_dir,
-        "--condition-on-previous-text", "False",  # 환각 방지: 이전 텍스트 conditioning 끄기
-        "--compression-ratio-threshold", "1.8",   # 반복 텍스트 감지 임계값
-        "--logprob-threshold", "-0.8",             # 낮은 확률 세그먼트 제거
-        "--no-speech-threshold", "0.6",            # 무음 구간 필터링
-        "--word-timestamps", "True",               # 단어 단위 타임스탬프 (환각 감지 활성화)
-        "--hallucination-silence-threshold", "2",  # 2초 이상 무음 시 환각 스킵
+        "--condition-on-previous-text", "False",
+        "--compression-ratio-threshold", "1.8",
+        "--logprob-threshold", "-0.8",
+        "--no-speech-threshold", "0.6",
+        "--word-timestamps", "True",
+        "--hallucination-silence-threshold", "2",
     ]
     if language:
         cmd += ["--language", language]
 
     logger.info(f"[transcribe] 시작: {file_path} (model={model})")
     start_time = time.time()
+    before_mtime = start_time
 
     try:
         proc = await asyncio.create_subprocess_exec(
@@ -892,10 +916,15 @@ async def transcribe_video(request: dict):
             logger.error(f"[transcribe] 실패: {stderr.decode()}")
             raise HTTPException(status_code=500, detail=f"Whisper error: {stderr.decode()[-500:]}")
 
-        logger.info(f"[transcribe] 완료: {output_srt} ({elapsed}s)")
+        # 실제 생성된 SRT 확인 (예측 경로 우선, 없으면 폴더 스캔)
+        actual_srt = output_srt if os.path.exists(output_srt) else find_actual_srt(output_dir, before_mtime)
+        if not actual_srt:
+            raise FileNotFoundError(f"SRT 파일을 찾을 수 없음 (예상: {output_srt})")
+
+        logger.info(f"[transcribe] 완료: {actual_srt} ({elapsed}s)")
 
         # 자동 클리닝 + 검증
-        clean_result = clean_srt(output_srt)
+        clean_result = clean_srt(actual_srt)
         if clean_result.get("blocks_removed", 0) > 0:
             logger.info(f"[transcribe] 클리닝: {clean_result['blocks_removed']}개 반복 블록 제거")
         if clean_result.get("warnings"):
@@ -905,7 +934,7 @@ async def transcribe_video(request: dict):
         return {
             "status": "done",
             "file": file_path,
-            "srt_path": output_srt,
+            "srt_path": actual_srt,
             "model": model,
             "elapsed_sec": elapsed,
             "clean": clean_result
