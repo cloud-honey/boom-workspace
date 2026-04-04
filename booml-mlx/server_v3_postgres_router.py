@@ -782,6 +782,8 @@ async def transcribe_video(request: dict):
         "--compression-ratio-threshold", "1.8",   # 반복 텍스트 감지 임계값
         "--logprob-threshold", "-0.8",             # 낮은 확률 세그먼트 제거
         "--no-speech-threshold", "0.6",            # 무음 구간 필터링
+        "--word-timestamps", "True",               # 단어 단위 타임스탬프 (환각 감지 활성화)
+        "--hallucination-silence-threshold", "2",  # 2초 이상 무음 시 환각 스킵
     ]
     if language:
         cmd += ["--language", language]

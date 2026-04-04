@@ -388,7 +388,7 @@ async def cmd_transcribe_scan(update: Update, context: ContextTypes.DEFAULT_TYPE
 
     # 모델 파싱
     valid_models = {"tiny", "base", "small", "medium", "large-v3"}
-    model = "tiny"
+    model = "base"
     if args and args[-1].lower() in valid_models:
         model = args[-1].lower()
         args = args[:-1]
@@ -563,7 +563,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         fname = os.path.basename(file_path)
         size_gb = os.path.getsize(file_path) / 1024**3
         msg = await update.message.reply_text(
-            f"⏳ 자막 추출 시작\n📄 `{fname}` ({size_gb:.1f}GB)\n모델: tiny",
+            f"⏳ 자막 추출 시작\n📄 `{fname}` ({size_gb:.1f}GB)\n모델: base",
             parse_mode='Markdown'
         )
 
