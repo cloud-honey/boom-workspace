@@ -30,6 +30,20 @@ MAX_HISTORY_PER_USER = 10
 # 피드백 버튼 상태 관리
 user_feedback_state = {}
 
+# 작업 취소 플래그
+_cancel_requested = False
+
+def request_cancel():
+    global _cancel_requested
+    _cancel_requested = True
+
+def clear_cancel():
+    global _cancel_requested
+    _cancel_requested = False
+
+def is_cancelled():
+    return _cancel_requested
+
 def get_user_history(user_id: int) -> deque:
     """사용자의 대화 히스토리 반환 (없으면 생성)"""
     if user_id not in user_histories:
@@ -303,6 +317,12 @@ async def feedback_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(msg, parse_mode='Markdown')
 
 
+async def cancel_task(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """진행 중인 작업 취소"""
+    request_cancel()
+    await update.message.reply_text("⛔ 취소 요청됨. 현재 파일 처리 후 중단됩니다.", parse_mode='Markdown')
+
+
 async def benchmark(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("🧪 *성능 테스트 중...*", parse_mode='Markdown')
 
@@ -458,7 +478,12 @@ async def cmd_transcribe_scan(update: Update, context: ContextTypes.DEFAULT_TYPE
     await msg.edit_text(list_text, parse_mode='Markdown')
 
     success, skipped, failed = 0, 0, 0
+    clear_cancel()
     for i, video_path in enumerate(batch, 1):
+        if is_cancelled():
+            await update.message.reply_text(f"⛔ 작업 취소됨 ({i-1}/{len(batch)} 완료)", parse_mode='Markdown')
+            clear_cancel()
+            return
         fname = os.path.basename(video_path)
         prog_msg = await update.message.reply_text(
             f"⏳ [{i}/{len(batch)}] `{fname}` 처리 중...", parse_mode='Markdown'
@@ -754,6 +779,7 @@ def main():
     app.add_handler(CommandHandler("feedback", feedback_info))
     app.add_handler(CommandHandler("benchmark", benchmark))
     app.add_handler(CommandHandler("transcribe", cmd_transcribe_scan))
+    app.add_handler(CommandHandler("cancel", cancel_task))
     app.add_handler(CommandHandler("h", help_cmd))
     
     # 메시지 핸들러
@@ -767,6 +793,7 @@ def main():
     commands = [
         BotCommand("h", "도움말"),
         BotCommand("transcribe", "나스 폴더 자막 추출 [폴더경로] [모델]"),
+        BotCommand("cancel", "진행 중인 작업 취소"),
         BotCommand("status", "서버 상태 확인"),
         BotCommand("stats", "사용 통계"),
         BotCommand("benchmark", "성능 테스트"),
