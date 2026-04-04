@@ -382,6 +382,7 @@ async def scan_nas_videos(folder: str) -> list:
 
 
 PIPELINE_STATE_FILE = "/Users/sykim/.openclaw/workspace/logs/transcribe_pipeline.json"
+WORK_LOG_FILE = "/Volumes/seot401/torrent/자막작업일지.md"
 
 def load_pipeline_state() -> dict:
     """파이프라인 상태 불러오기"""
@@ -400,6 +401,59 @@ def save_pipeline_state(state: dict):
     os.makedirs(os.path.dirname(PIPELINE_STATE_FILE), exist_ok=True)
     with open(PIPELINE_STATE_FILE, 'w') as f:
         json.dump(state, f, ensure_ascii=False, indent=2)
+
+
+def append_work_log(video_path: str, srt_path: str, ko_srt_path: str,
+                    started_at: str, transcribe_sec: float, translate_sec: float,
+                    model: str, blocks: int):
+    """자막 작업 일지에 항목 추가"""
+    import os
+    from datetime import datetime
+
+    now = datetime.now().strftime("%Y-%m-%d %H:%M")
+    fname = os.path.basename(video_path)
+    srt_fname = os.path.basename(srt_path) if srt_path else "-"
+    ko_fname = os.path.basename(ko_srt_path) if ko_srt_path else "-"
+    size_gb = round(os.path.getsize(video_path) / 1024**3, 2) if os.path.exists(video_path) else 0
+
+    # ko srt 글자 수
+    total_chars = 0
+    if ko_srt_path and os.path.exists(ko_srt_path):
+        try:
+            with open(ko_srt_path, 'r', encoding='utf-8', errors='replace') as f:
+                content = f.read()
+            # 타임코드·번호 제외 순수 텍스트만
+            import re
+            lines = content.split('\n')
+            text_lines = [l for l in lines if l.strip()
+                          and not l.strip().isdigit()
+                          and '-->' not in l]
+            total_chars = sum(len(l) for l in text_lines)
+        except:
+            pass
+
+    entry = (
+        f"\n---\n"
+        f"## {fname}\n"
+        f"- **등록일**: {now}\n"
+        f"- **작업 시작**: {started_at}\n"
+        f"- **모델**: {model}\n"
+        f"- **파일 크기**: {size_gb} GB\n"
+        f"- **자막 블록 수**: {blocks}개\n"
+        f"- **한국어 자막 글자 수**: {total_chars:,}자\n"
+        f"- **소요 시간**: 추출 {transcribe_sec}초 + 번역 {translate_sec}초\n"
+        f"- **원본 SRT**: `{srt_fname}`\n"
+        f"- **한국어 SRT**: `{ko_fname}`\n"
+    )
+
+    # 파일 없으면 헤더 생성
+    if not os.path.exists(WORK_LOG_FILE):
+        header = "# 📋 자막 작업 일지\n\n붐엘이 처리한 자막 작업 기록입니다.\n"
+        with open(WORK_LOG_FILE, 'w', encoding='utf-8') as f:
+            f.write(header)
+
+    with open(WORK_LOG_FILE, 'a', encoding='utf-8') as f:
+        f.write(entry)
 
 
 async def cmd_transcribe_scan(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -434,16 +488,28 @@ async def cmd_transcribe_scan(update: Update, context: ContextTypes.DEFAULT_TYPE
             await update.message.reply_text(f"⏭️ 이미 자막 있음: `{os.path.basename(srt_path)}`", parse_mode='Markdown')
             return
         msg = await update.message.reply_text(f"⏳ `{os.path.basename(folder)}` 처리 중...", parse_mode='Markdown')
+        from datetime import datetime
+        started_at = datetime.now().strftime("%Y-%m-%d %H:%M")
         result = await transcribe_file(folder, model=model)
         status_val = result.get("status", "")
         if status_val == "done":
             srt_out = result.get("srt_path", "")
-            await msg.edit_text(f"✅ 자막 추출 완료!\n`{os.path.basename(srt_out)}`", parse_mode='Markdown')
+            elapsed = result.get("elapsed_sec", 0)
+            await msg.edit_text(f"✅ 자막 추출 완료!\n`{os.path.basename(srt_out)}`\n🔄 번역 중...", parse_mode='Markdown')
             if srt_out and os.path.exists(srt_out):
                 tr = await translate_srt_file(srt_out)
                 if tr.get("status") == "done":
                     ko_path = tr.get("output", tr.get("ko_srt_path", ""))
-                    await update.message.reply_text(f"🇰🇷 번역 완료!\n`{os.path.basename(ko_path)}`", parse_mode='Markdown')
+                    tr_elapsed = tr.get("elapsed_sec", 0)
+                    await update.message.reply_text(
+                        f"🇰🇷 번역 완료!\n`{os.path.basename(ko_path)}`\n⏱ 추출 {elapsed}초 + 번역 {tr_elapsed}초",
+                        parse_mode='Markdown'
+                    )
+                    append_work_log(
+                        video_path=folder, srt_path=srt_out, ko_srt_path=ko_path,
+                        started_at=started_at, transcribe_sec=elapsed, translate_sec=tr_elapsed,
+                        model=model, blocks=tr.get("blocks", 0)
+                    )
         elif status_val == "skipped":
             await msg.edit_text(f"⏭️ 이미 처리됨: `{os.path.basename(folder)}`", parse_mode='Markdown')
         else:
@@ -509,6 +575,7 @@ async def cmd_transcribe_scan(update: Update, context: ContextTypes.DEFAULT_TYPE
                     tr = await translate_srt_file(srt_path)
                     ko_path = tr.get("output", "")
                     tr_elapsed = tr.get("elapsed_sec", 0)
+                    tr_blocks = tr.get("blocks", 0)
                     await prog_msg.edit_text(
                         f"✅ [{i}/{len(batch)}] 완료!\n"
                         f"📄 `{fname}`\n"
@@ -516,6 +583,13 @@ async def cmd_transcribe_scan(update: Update, context: ContextTypes.DEFAULT_TYPE
                         f"🇯🇵 `{os.path.basename(srt_path)}`\n"
                         f"🇰🇷 `{os.path.basename(ko_path)}`",
                         parse_mode='Markdown'
+                    )
+                    from datetime import datetime
+                    append_work_log(
+                        video_path=video_path, srt_path=srt_path, ko_srt_path=ko_path,
+                        started_at=datetime.now().strftime("%Y-%m-%d %H:%M"),
+                        transcribe_sec=elapsed, translate_sec=tr_elapsed,
+                        model=model, blocks=tr_blocks
                     )
                 except Exception as te:
                     await prog_msg.edit_text(
@@ -611,6 +685,13 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         f"🇯🇵 `{os.path.basename(srt_path)}`\n"
                         f"🇰🇷 `{os.path.basename(ko_path)}`",
                         parse_mode='Markdown'
+                    )
+                    from datetime import datetime
+                    append_work_log(
+                        video_path=file_path, srt_path=srt_path, ko_srt_path=ko_path,
+                        started_at=datetime.now().strftime("%Y-%m-%d %H:%M"),
+                        transcribe_sec=elapsed, translate_sec=tr_elapsed,
+                        model="base", blocks=tr.get("blocks", 0)
                     )
                 except Exception as te:
                     await msg.edit_text(
