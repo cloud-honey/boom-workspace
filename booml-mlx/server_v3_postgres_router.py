@@ -227,9 +227,17 @@ async def get_realtime_data(user_message: str = None) -> str:
             # 질문 형태 감지 (5W1H)
             question_words = ["누구", "어디", "언제", "왜", "어떻게", "무엇"]
             
-            needs_search = (
+            # 내부 시스템 프롬프트 (번역, 코드 등 영어 지시문) 검색 제외
+            is_system_prompt = (
+                user_message.startswith("You are") or
+                user_message.startswith("Translate") or
+                user_message.startswith("As a") or
+                len(user_message) > 500  # 긴 배치 프롬프트는 검색 불필요
+            )
+
+            needs_search = not is_system_prompt and (
                 any(keyword in user_message for keyword in search_keywords) or
-                any(user_message.endswith(word + "?") or user_message.endswith(word + "?") 
+                any(user_message.endswith(word + "?") or user_message.endswith(word + "?")
                     for word in question_words) or
                 "?" in user_message  # 질문 형태
             )
