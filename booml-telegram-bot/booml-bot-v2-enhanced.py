@@ -358,6 +358,30 @@ async def notify_master(text: str):
         logger.error(f"마스터 알림 실패: {e}")
 
 
+def get_video_duration(file_path: str) -> float:
+    """ffprobe로 영상 길이(초) 반환. 실패 시 -1"""
+    import subprocess
+    try:
+        result = subprocess.run(
+            ["ffprobe", "-v", "quiet", "-show_entries", "format=duration",
+             "-of", "default=noprint_wrappers=1:nokey=1", file_path],
+            capture_output=True, text=True, timeout=10
+        )
+        return float(result.stdout.strip())
+    except Exception:
+        return -1.0
+
+
+def estimate_transcribe_time(duration_sec: float, model: str = "base") -> str:
+    """모델별 예상 추출 시간 문자열 반환"""
+    # 경험치: base 모델 기준 영상 1분 → 약 10~15초 처리 (맥미니 M2 MLX)
+    speed_factor = {"tiny": 5, "base": 12, "small": 20, "medium": 40, "large-v3": 90}.get(model, 12)
+    est_sec = int((duration_sec / 60) * speed_factor)
+    if est_sec < 60:
+        return f"~{est_sec}초"
+    return f"~{est_sec // 60}분 {est_sec % 60}초"
+
+
 async def transcribe_file(file_path: str, model: str = "base", language: str = "ja", max_retries: int = 3) -> dict:
     """붐엘 서버에 자막 추출 요청 (최대 max_retries회 재시도)"""
     import os
@@ -589,7 +613,13 @@ async def cmd_transcribe_scan(update: Update, context: ContextTypes.DEFAULT_TYPE
         f"• 이번 배치: {len(batch)}개 (모델: {model})\n\n"
     )
     for i, v in enumerate(batch, 1):
-        list_text += f"{i}. `{os.path.basename(v)}`\n"
+        dur = get_video_duration(v)
+        if dur > 0:
+            est = estimate_transcribe_time(dur, model)
+            dur_min = int(dur // 60)
+            list_text += f"{i}. `{os.path.basename(v)}` ({dur_min}분, 예상 {est})\n"
+        else:
+            list_text += f"{i}. `{os.path.basename(v)}`\n"
     if total_remaining > limit:
         list_text += f"\n_나머지 {total_remaining - limit}개는 다음 /transcribe 실행 시 처리_"
 
@@ -603,9 +633,19 @@ async def cmd_transcribe_scan(update: Update, context: ContextTypes.DEFAULT_TYPE
             clear_cancel()
             return
         fname = os.path.basename(video_path)
-        prog_msg = await update.message.reply_text(
-            f"⏳ [{i}/{len(batch)}] `{fname}` 처리 중...", parse_mode='Markdown'
-        )
+        duration = get_video_duration(video_path)
+        if duration > 0:
+            est = estimate_transcribe_time(duration, model)
+            dur_min = int(duration // 60)
+            prog_msg = await update.message.reply_text(
+                f"⏳ [{i}/{len(batch)}] `{fname}`\n"
+                f"🎬 영상 길이: {dur_min}분 | 예상 추출: {est}",
+                parse_mode='Markdown'
+            )
+        else:
+            prog_msg = await update.message.reply_text(
+                f"⏳ [{i}/{len(batch)}] `{fname}` 처리 중...", parse_mode='Markdown'
+            )
 
         try:
             result = await transcribe_file(video_path, model=model)
