@@ -20,10 +20,18 @@ DevTeam: 게이트웨이 18790, PM2: devteam-gateway
 
 ## 붐엘 현황 (2026-04-04)
 - 모델: `mlx-community/gemma-4-26b-a4b-it-4bit` · mlx-vlm 0.4.3
-- 속도: 69-72 t/s · VRAM ~16.8GB · TurboQuant 3.5bit (4.6x 압축)
-- 서버: `booml-mlx/server_v3_postgres_router.py` (포트 8000)
-- 봇: `booml-telegram-bot/booml-bot-v2-enhanced.py`
-- 기능: 실시간 검색, 피드백, 자막 추출(/transcribe), 한국어 번역
+- 속도: 69-72 t/s · VRAM ~16.8GB · TurboQuant 3.5bit (4.6x 압축) · max_tokens 2048
+
+| 에이전트 | 봇 | PM2 | 포트 | 봇 스크립트 |
+|---------|-----|-----|------|-----------|
+| 붐엘 | @boomllm_bot | booml-telegram-bot(18) / booml-mlx-server(17) | 8000 | booml-bot-v2-enhanced.py |
+| 붐엘2 | (별도) | booml-chat-bot(22) / booml-mlx-chat(21) | 8001 | booml-bot-v2-chat.py |
+
+- 서버 스크립트(공통): `booml-mlx/server_v3_postgres_router.py`
+- 붐엘 기능: 채팅, 웹검색, 피드백, 자막추출(/transcribe), 번역(/translate), 환각제거(/clean)
+- 붐엘2 기능: 채팅, 웹검색, 피드백, 크롤링(/crawl — HTML+PDF 지원, 청크 번역)
+- 크롤링 저장: `/Users/sykim/workspace/crawled/` → 대시보드 "🌐 크롤링 목록" 카드 연동
+- 상세 문서: `booml-mlx/README.md`
 
 ## 인프라
 - 대시보드: React+Express (5173) · dashboard.abamti.com
@@ -60,7 +68,8 @@ ollama.abamti.com→8081 · mrht.abamti.com→5000 · occ.abamti.com→18789
 - TeslaMate PM2 등록
 
 ## 최근 작업 요약
-- **04-04**: 붐엘 TurboQuant 활성화, 토큰 통계 수집, /status 수정, 번역 버그 수정, 토큰 절약 설정, 워크스페이스 정리
+- **04-04 저녁**: 붐엘2 /crawl 기능 추가(HTML+PDF), 청크 번역, 대시보드 크롤링 카드, README 업데이트
+- **04-04 오전**: 붐엘 TurboQuant 활성화, 토큰 통계 수집, /status 수정, 번역 버그 수정, 토큰 절약 설정, 워크스페이스 정리, 붐엘2 봇 추가(포트 8001)
 - **04-03**: 붐엘 Gemma 4 업그레이드, 피드백/검색/자막추출 기능 추가
 - **04-01**: 데일리 리포트 개선, 대시보드 버그 수정
 - **03-31**: CF Tunnel 로컬 관리로 교체
