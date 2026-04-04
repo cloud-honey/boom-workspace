@@ -12,3 +12,4 @@
 2026-04-03 23:14:48 KST | OK | model=deepseek/deepseek-chat | xps=unchecked | escalation=none | notes=transcribe완료
 2026-04-03 23:42:25 KST | OK | model=deepseek/deepseek-chat | xps=unchecked | escalation=none | notes=base재추출중
 2026-04-04 00:34:21 KST | OK | model=deepseek/deepseek-chat | xps=unchecked | escalation=none | notes=번역진행중
+2026-04-04 21:12:59 KST | OK | model=claude-sonnet-4-6 | xps=active | escalation=none | notes=crawl_feature_added

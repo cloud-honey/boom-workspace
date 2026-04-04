@@ -9,6 +9,7 @@ import logging
 import aiohttp
 import time
 import json
+import re
 from collections import deque
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes, CallbackQueryHandler
@@ -73,7 +74,7 @@ async def query_mlx(prompt: str, user_id: int = None, project_id: str = None, ti
                 json={
                     'messages': [{'role': 'user', 'content': prompt}],
                     'model': 'booml-mlx',
-                    'max_tokens': 512,
+                    'max_tokens': 2048,
                     'temperature': 0.5,
                     'user_id': user_id_str,
                     'project_id': project_id
@@ -168,6 +169,8 @@ async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "• `/transcribe` — 기본 나스 폴더 전체 처리\n"
         "• `/transcribe [폴더경로]` — 지정 폴더 전체 처리\n"
         "• `/transcribe [폴더경로] base` — base 모델로 처리\n\n"
+        "🌐 *크롤링*\n"
+        "• `/crawl [URL]` — 사이트/PDF 크롤링 + 한국어 번역 + 파일 저장\n\n"
         "📊 *상태 & 통계*\n"
         "• `/status` — 서버 상태 확인\n"
         "• `/stats` — 사용 통계\n"
@@ -1049,6 +1052,214 @@ async def cmd_translate(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await msg.edit_text(f"❌ 번역 실패\n`{str(err)[:300]}`", parse_mode='Markdown')
 
 
+async def cmd_crawl(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """/crawl [URL] — 사이트 크롤링 → 정리 → 한국어 번역 → 파일 저장"""
+    import os
+    from datetime import datetime
+    from urllib.parse import urlparse
+
+    raw_text = update.message.text or ""
+    url = raw_text.split(' ', 1)[1].strip() if ' ' in raw_text else ""
+
+    if not url:
+        await update.message.reply_text(
+            "사용법: `/crawl https://example.com/page`\n\n"
+            "웹페이지를 크롤링해서 마크다운으로 정리 및 한국어 번역합니다.",
+            parse_mode='Markdown'
+        )
+        return
+
+    if not url.startswith('http'):
+        await update.message.reply_text("❌ 유효한 URL을 입력해주세요 (http:// 또는 https://로 시작)", parse_mode='Markdown')
+        return
+
+    is_pdf = url.lower().split('?')[0].endswith('.pdf')
+    msg = await update.message.reply_text(
+        f"{'📄 PDF' if is_pdf else '🌐 크롤링'} 처리 중...\n`{url}`", parse_mode='Markdown'
+    )
+
+    try:
+        from bs4 import BeautifulSoup
+        import html2text
+        import tempfile, os as _os
+
+        headers = {'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36'}
+        truncated = False
+        MAX_CHARS = 6000
+
+        if is_pdf:
+            # ── PDF 처리 ──────────────────────────────────────────────────
+            from pdfminer.high_level import extract_text as pdf_extract_text
+
+            async with aiohttp.ClientSession() as session:
+                async with session.get(url, headers=headers, timeout=aiohttp.ClientTimeout(total=60)) as resp:
+                    if resp.status != 200:
+                        await msg.edit_text(f"❌ PDF 응답 오류: {resp.status}", parse_mode='Markdown')
+                        return
+                    pdf_bytes = await resp.read()
+
+            # 임시 파일로 저장 후 텍스트 추출
+            with tempfile.NamedTemporaryFile(suffix='.pdf', delete=False) as tmp:
+                tmp.write(pdf_bytes)
+                tmp_path = tmp.name
+
+            try:
+                raw_text = pdf_extract_text(tmp_path)
+            finally:
+                _os.unlink(tmp_path)
+
+            # 정리
+            markdown_content = re.sub(r'\n{3,}', '\n\n', raw_text).strip()
+            # URL에서 파일명을 제목으로
+            fname = url.split('/')[-1].split('?')[0].replace('_', ' ').replace('-', ' ')
+            title_text = fname if fname else "PDF 문서"
+
+            size_kb = round(len(pdf_bytes) / 1024)
+            await msg.edit_text(
+                f"✅ PDF 추출 완료 ({size_kb}KB, {len(markdown_content)}자)\n🤖 붐엘이 번역 중...",
+                parse_mode='Markdown'
+            )
+
+        else:
+            # ── HTML 크롤링 ───────────────────────────────────────────────
+            async with aiohttp.ClientSession() as session:
+                async with session.get(url, headers=headers, timeout=aiohttp.ClientTimeout(total=30)) as resp:
+                    if resp.status != 200:
+                        await msg.edit_text(f"❌ 페이지 응답 오류: {resp.status}", parse_mode='Markdown')
+                        return
+                    html = await resp.text()
+
+            soup = BeautifulSoup(html, 'lxml')
+            for tag in soup(['script', 'style', 'nav', 'footer', 'header', 'aside', 'noscript', 'iframe']):
+                tag.decompose()
+
+            title = soup.find('title')
+            title_text = title.get_text(strip=True) if title else "제목 없음"
+
+            content_el = soup.find('article') or soup.find('main') or soup.find('div', class_=re.compile(r'content|main|article', re.I)) or soup.body
+            if not content_el:
+                content_el = soup
+
+            h = html2text.HTML2Text()
+            h.ignore_links = False
+            h.ignore_images = True
+            h.body_width = 0
+            h.unicode_snob = True
+            markdown_content = h.handle(str(content_el))
+            markdown_content = re.sub(r'\n{3,}', '\n\n', markdown_content).strip()
+
+            await msg.edit_text(
+                f"✅ 크롤링 완료 ({len(markdown_content)}자)\n🤖 붐엘이 번역 중...",
+                parse_mode='Markdown'
+            )
+
+        total_len = len(markdown_content)
+        CHUNK_SIZE = 5000
+        chunks = [markdown_content[i:i+CHUNK_SIZE] for i in range(0, total_len, CHUNK_SIZE)]
+        total_chunks = len(chunks)
+
+        await msg.edit_text(
+            f"✅ 추출 완료 ({total_len:,}자 · {total_chunks}청크)\n🤖 번역 시작 (1/{total_chunks})...",
+            parse_mode='Markdown'
+        )
+
+        # 3. 청크별 번역 → 결과 합치기
+        translated_parts = []
+        elapsed_total = 0.0
+        chunk_type = "PDF 문서" if is_pdf else "웹페이지"
+
+        for idx, chunk in enumerate(chunks, 1):
+            if total_chunks > 1:
+                try:
+                    await msg.edit_text(
+                        f"🔄 번역 중... ({idx}/{total_chunks})\n📄 `{title_text[:40]}`",
+                        parse_mode='Markdown'
+                    )
+                except:
+                    pass
+            prompt = (
+                f"아래는 {chunk_type} 내용입니다 ({idx}/{total_chunks}파트). "
+                f"한국어로 번역하고 마크다운 형식으로 정리해주세요.\n"
+                f"제목: {title_text}\n\n"
+                f"--- 내용 ---\n{chunk}\n---\n\n"
+                f"번역된 내용:"
+            )
+            part, elapsed, _ = await query_mlx(prompt, user_id=update.effective_user.id, timeout_sec=300)
+            translated_parts.append(part)
+            elapsed_total += elapsed
+
+        response = "\n\n---\n\n".join(translated_parts) if len(translated_parts) > 1 else translated_parts[0]
+        elapsed = elapsed_total
+        truncated = False  # 청크 처리로 전체 처리됨
+
+        # 4. 파일 저장
+        parsed = urlparse(url)
+        domain = parsed.netloc.replace('www.', '')
+        path_slug = parsed.path.strip('/').replace('/', '-')[:50] if parsed.path.strip('/') else 'index'
+        timestamp = datetime.now().strftime("%Y%m%d-%H%M")
+        type_tag = "pdf" if is_pdf else "web"
+        filename = f"{type_tag}_{domain}_{path_slug}_{timestamp}.md"
+
+        save_dir = "/Users/sykim/workspace/crawled"
+        os.makedirs(save_dir, exist_ok=True)
+        save_path = os.path.join(save_dir, filename)
+
+        file_content = (
+            f"# {title_text}\n\n"
+            f"- **출처:** {url}\n"
+            f"- **크롤링:** {datetime.now().strftime('%Y-%m-%d %H:%M')}\n"
+            f"- **번역:** 붐엘 (MLX)\n\n"
+            f"---\n\n"
+            f"{response}"
+        )
+        if truncated:
+            file_content += "\n\n_⚠️ 원본 내용이 너무 길어 일부만 처리됨_"
+
+        with open(save_path, 'w', encoding='utf-8') as f:
+            f.write(file_content)
+
+        # 5. 텔레그램 전송
+        preview = response[:1500] if len(response) > 1500 else response
+        if len(response) > 1500:
+            preview += "\n\n_...(파일에서 전체 확인)_"
+
+        summary = (
+            f"✅ *크롤링 완료*\n\n"
+            f"📄 *{title_text}*\n"
+            f"🔗 {url}\n"
+            f"⏱ {elapsed:.1f}초\n"
+            f"💾 저장: `{save_path}`\n\n"
+            f"---\n\n"
+            f"{preview}"
+        )
+
+        # 메시지가 너무 길면 분할
+        if len(summary) > 4000:
+            await msg.edit_text(
+                f"✅ *크롤링 완료*\n📄 *{title_text}*\n⏱ {elapsed:.1f}초\n💾 `{save_path}`",
+                parse_mode='Markdown'
+            )
+            # 내용 분할 전송
+            chunks = [response[i:i+3500] for i in range(0, min(len(response), 7000), 3500)]
+            for chunk in chunks:
+                try:
+                    await update.message.reply_text(chunk, parse_mode='Markdown')
+                except:
+                    await update.message.reply_text(chunk)
+        else:
+            try:
+                await msg.edit_text(summary, parse_mode='Markdown')
+            except:
+                await msg.edit_text(
+                    f"✅ 크롤링 완료\n{title_text}\n{elapsed:.1f}초\n저장: {save_path}"
+                )
+
+    except ImportError as e:
+        await msg.edit_text(f"❌ 라이브러리 누락: `{e}`\n`pip install beautifulsoup4 lxml html2text`", parse_mode='Markdown')
+    except Exception as e:
+        await msg.edit_text(f"❌ 크롤링 오류: `{str(e)[:300]}`", parse_mode='Markdown')
+
+
 def main():
     app = Application.builder().token(BOT_TOKEN).build()
     
@@ -1062,6 +1273,7 @@ def main():
     app.add_handler(CommandHandler("translate", cmd_translate))
     app.add_handler(CommandHandler("clean", cmd_clean))
     app.add_handler(CommandHandler("cancel", cancel_task))
+    app.add_handler(CommandHandler("crawl", cmd_crawl))
     app.add_handler(CommandHandler("h", help_cmd))
     
     # 메시지 핸들러
@@ -1077,6 +1289,7 @@ def main():
         BotCommand("transcribe", "나스 폴더 자막 추출 [폴더경로] [모델]"),
         BotCommand("translate", "SRT 파일 한국어 번역 [srt경로]"),
         BotCommand("clean", "SRT 환각 제거 + 검증 [srt경로]"),
+        BotCommand("crawl", "사이트 크롤링 + 번역 [URL]"),
         BotCommand("cancel", "진행 중인 작업 취소"),
         BotCommand("status", "서버 상태 확인"),
         BotCommand("stats", "사용 통계"),
