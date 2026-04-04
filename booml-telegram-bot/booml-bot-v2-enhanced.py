@@ -343,26 +343,78 @@ async def benchmark(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(msg, parse_mode='Markdown')
 
 
-async def transcribe_file(file_path: str, model: str = "base", language: str = "ja") -> dict:
-    """붐엘 서버에 자막 추출 요청"""
-    async with aiohttp.ClientSession() as session:
-        async with session.post(
-            f"{MLX_SERVER_URL}/v1/transcribe",
-            json={"file_path": file_path, "model": model, "language": language, "output_format": "srt"},
-            timeout=aiohttp.ClientTimeout(total=3600)
-        ) as resp:
-            return await resp.json()
+MASTER_CHAT_ID = 47980209
+
+async def notify_master(text: str):
+    """마스터에게 텔레그램 알림 발송 (봇 토큰 직접 사용)"""
+    try:
+        async with aiohttp.ClientSession() as session:
+            await session.post(
+                f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
+                json={"chat_id": MASTER_CHAT_ID, "text": text, "parse_mode": "Markdown"},
+                timeout=aiohttp.ClientTimeout(total=10)
+            )
+    except Exception as e:
+        logger.error(f"마스터 알림 실패: {e}")
 
 
-async def translate_srt_file(srt_path: str) -> dict:
-    """붐엘 서버에 SRT 한국어 번역 요청"""
-    async with aiohttp.ClientSession() as session:
-        async with session.post(
-            f"{MLX_SERVER_URL}/v1/translate_srt",
-            json={"srt_path": srt_path, "batch_size": 10},
-            timeout=aiohttp.ClientTimeout(total=7200)
-        ) as resp:
-            return await resp.json()
+async def transcribe_file(file_path: str, model: str = "base", language: str = "ja", max_retries: int = 3) -> dict:
+    """붐엘 서버에 자막 추출 요청 (최대 max_retries회 재시도)"""
+    import os
+    fname = os.path.basename(file_path)
+    last_error = None
+    for attempt in range(1, max_retries + 1):
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.post(
+                    f"{MLX_SERVER_URL}/v1/transcribe",
+                    json={"file_path": file_path, "model": model, "language": language, "output_format": "srt"},
+                    timeout=aiohttp.ClientTimeout(total=3600)
+                ) as resp:
+                    result = await resp.json()
+                    if result.get("status") in ("done", "skipped"):
+                        return result
+                    # 서버가 오류 응답 반환
+                    last_error = result.get("error", f"status={result.get('status')}")
+                    logger.warning(f"자막추출 시도 {attempt}/{max_retries} 실패: {fname} — {last_error}")
+        except Exception as e:
+            last_error = str(e)
+            logger.warning(f"자막추출 시도 {attempt}/{max_retries} 예외: {fname} — {last_error}")
+        if attempt < max_retries:
+            await asyncio.sleep(5 * attempt)  # 5초, 10초 대기 후 재시도
+    # 최대 재시도 초과 — 마스터 알림
+    msg = f"⚠️ *붐엘 자막추출 실패* ({max_retries}회 시도)\n📄 `{fname}`\n❌ `{str(last_error)[:300]}`"
+    await notify_master(msg)
+    return {"status": "error", "error": last_error}
+
+
+async def translate_srt_file(srt_path: str, max_retries: int = 3) -> dict:
+    """붐엘 서버에 SRT 한국어 번역 요청 (최대 max_retries회 재시도)"""
+    import os
+    fname = os.path.basename(srt_path)
+    last_error = None
+    for attempt in range(1, max_retries + 1):
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.post(
+                    f"{MLX_SERVER_URL}/v1/translate_srt",
+                    json={"srt_path": srt_path, "batch_size": 10},
+                    timeout=aiohttp.ClientTimeout(total=7200)
+                ) as resp:
+                    result = await resp.json()
+                    if result.get("status") == "done":
+                        return result
+                    last_error = result.get("error", f"status={result.get('status')}")
+                    logger.warning(f"번역 시도 {attempt}/{max_retries} 실패: {fname} — {last_error}")
+        except Exception as e:
+            last_error = str(e)
+            logger.warning(f"번역 시도 {attempt}/{max_retries} 예외: {fname} — {last_error}")
+        if attempt < max_retries:
+            await asyncio.sleep(5 * attempt)
+    # 최대 재시도 초과 — 마스터 알림
+    msg = f"⚠️ *붐엘 번역 실패* ({max_retries}회 시도)\n📄 `{fname}`\n❌ `{str(last_error)[:300]}`"
+    await notify_master(msg)
+    return {"status": "error", "error": last_error}
 
 
 async def scan_nas_videos(folder: str) -> list:
@@ -616,17 +668,25 @@ async def cmd_transcribe_scan(update: Update, context: ContextTypes.DEFAULT_TYPE
         except Exception as e:
             state.setdefault("failed", []).append(video_path)
             save_pipeline_state(state)
+            err_text = str(e)[:200]
             await prog_msg.edit_text(
-                f"❌ [{i}/{len(batch)}] 오류: `{fname}`\n`{str(e)[:200]}`", parse_mode='Markdown'
+                f"❌ [{i}/{len(batch)}] 오류: `{fname}`\n`{err_text}`", parse_mode='Markdown'
+            )
+            await notify_master(
+                f"⚠️ *자막 파이프라인 오류* [{i}/{len(batch)}]\n📄 `{fname}`\n❌ `{err_text}`\n\n작업을 대기합니다."
             )
             failed += 1
+            # 예외 발생 시 대기 (다음 파일 진행 중단)
+            break
 
     remaining_after = total_remaining - len(batch)
     summary = (
         f"🎬 배치 완료!\n"
         f"✅ 성공: {success}개  ⏭ 스킵: {skipped}개  ❌ 실패: {failed}개\n\n"
     )
-    if remaining_after > 0:
+    if failed > 0:
+        summary += f"⛔ 실패로 인해 작업이 중단됐습니다. 실패 사유를 확인 후 `/transcribe` 재실행하세요."
+    elif remaining_after > 0:
         summary += f"📌 남은 파일: {remaining_after}개\n`/transcribe {limit}` 으로 이어서 처리하세요"
     else:
         summary += "🏁 전체 완료!"
