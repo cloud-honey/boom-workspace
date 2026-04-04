@@ -382,7 +382,7 @@ async def scan_nas_videos(folder: str) -> list:
 
 
 PIPELINE_STATE_FILE = "/Users/sykim/.openclaw/workspace/logs/transcribe_pipeline.json"
-WORK_LOG_FILE = "/Volumes/seot401/자막작업일지.md"
+WORK_LOG_FILE = "/Volumes/seot401/subtitle-work-log.md"
 
 def load_pipeline_state() -> dict:
     """파이프라인 상태 불러오기"""
