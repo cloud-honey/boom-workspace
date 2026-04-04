@@ -67,6 +67,14 @@ ollama.abamti.com→8081 · mrht.abamti.com→5000 · occ.abamti.com→18789
 - UFW 방화벽 활성화 (sudo)
 - TeslaMate PM2 등록
 
+## 🔄 재부팅 후 확인 필요 (2026-04-04)
+- PM2 자동시작 테스트 — `pm2 list` 로 붐엘/붐엘2 살아있는지 확인
+- 실패 시: 터미널에서 아래 명령 실행
+  ```bash
+  pm2 resurrect && pm2 save
+  # plist 재작성도 필요 시 붐에게 요청
+  ```
+
 ## 최근 작업 요약
 - **04-04 저녁**: 붐엘2 /crawl 기능 추가(HTML+PDF), 청크 번역, 대시보드 크롤링 카드, README 업데이트
 - **04-04 오전**: 붐엘 TurboQuant 활성화, 토큰 통계 수집, /status 수정, 번역 버그 수정, 토큰 절약 설정, 워크스페이스 정리, 붐엘2 봇 추가(포트 8001)
