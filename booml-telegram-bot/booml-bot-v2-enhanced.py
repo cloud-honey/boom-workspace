@@ -954,6 +954,55 @@ async def handle_feedback_callback(update: Update, context: ContextTypes.DEFAULT
         await query.edit_message_text("❌ 피드백 처리 실패")
 
 
+async def cmd_clean(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """/clean [srt경로] — SRT 환각 제거 + 검증"""
+    import os
+    raw_text = update.message.text or ""
+    srt_path = raw_text.split(' ', 1)[1].strip() if ' ' in raw_text else ""
+
+    if not srt_path:
+        await update.message.reply_text(
+            "사용법: `/clean /Volumes/seot401/torrent/파일명.srt`\n\n"
+            "반복 자막 제거 + 검증 리포트를 출력합니다.",
+            parse_mode='Markdown'
+        )
+        return
+
+    if not os.path.exists(srt_path):
+        await update.message.reply_text(f"❌ 파일 없음: `{srt_path}`", parse_mode='Markdown')
+        return
+
+    msg = await update.message.reply_text(f"🧹 클리닝 중...\n`{os.path.basename(srt_path)}`", parse_mode='Markdown')
+
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                f"{MLX_SERVER_URL}/v1/clean_srt",
+                json={"srt_path": srt_path},
+                timeout=aiohttp.ClientTimeout(total=60)
+            ) as resp:
+                result = await resp.json()
+
+        fname = os.path.basename(srt_path)
+        removed = result.get("blocks_removed", 0)
+        original = result.get("blocks_original", 0)
+        after = result.get("blocks_after", 0)
+        warnings = result.get("warnings", [])
+
+        text = (
+            f"✅ 클리닝 완료: `{fname}`\n"
+            f"📊 {original}개 → {after}개 (제거: {removed}개)\n"
+        )
+        if warnings:
+            text += "\n⚠️ 경고:\n" + "\n".join(f"• {w}" for w in warnings)
+        else:
+            text += "✔️ 이상 없음"
+
+        await msg.edit_text(text, parse_mode='Markdown')
+    except Exception as e:
+        await msg.edit_text(f"❌ 오류: `{str(e)[:200]}`", parse_mode='Markdown')
+
+
 async def cmd_translate(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """/translate [srt파일경로] — SRT 파일 한국어 번역"""
     import os
@@ -1011,6 +1060,7 @@ def main():
     app.add_handler(CommandHandler("benchmark", benchmark))
     app.add_handler(CommandHandler("transcribe", cmd_transcribe_scan))
     app.add_handler(CommandHandler("translate", cmd_translate))
+    app.add_handler(CommandHandler("clean", cmd_clean))
     app.add_handler(CommandHandler("cancel", cancel_task))
     app.add_handler(CommandHandler("h", help_cmd))
     
@@ -1026,6 +1076,7 @@ def main():
         BotCommand("h", "도움말"),
         BotCommand("transcribe", "나스 폴더 자막 추출 [폴더경로] [모델]"),
         BotCommand("translate", "SRT 파일 한국어 번역 [srt경로]"),
+        BotCommand("clean", "SRT 환각 제거 + 검증 [srt경로]"),
         BotCommand("cancel", "진행 중인 작업 취소"),
         BotCommand("status", "서버 상태 확인"),
         BotCommand("stats", "사용 통계"),

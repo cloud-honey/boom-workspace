@@ -736,6 +736,94 @@ async def list_models():
         raise HTTPException(status_code=500, detail=str(e))
 
 
+def clean_srt(srt_path: str) -> dict:
+    """SRT 파일 환각 제거 + 검증
+    - 연속 동일 블록 최대 2회로 제한
+    - 블록 내 반복 문장 정리
+    - 검증 리포트 반환
+    """
+    import os, re
+
+    with open(srt_path, 'r', encoding='utf-8', errors='replace') as f:
+        content = f.read()
+
+    pattern = re.compile(
+        r'(\d+)\r?\n(\d{2}:\d{2}:\d{2}[,\.]\d{3}\s*-->\s*\d{2}:\d{2}:\d{2}[,\.]\d{3})\r?\n([\s\S]*?)(?=\r?\n\d+\r?\n|\Z)',
+        re.MULTILINE
+    )
+    blocks = pattern.findall(content)
+    if not blocks:
+        return {"cleaned": False, "reason": "파싱 실패", "blocks_original": 0, "blocks_removed": 0}
+
+    cleaned_blocks = []
+    removed_count = 0
+    prev_texts = []  # 최근 2개 텍스트 기록
+
+    for num, timecode, text in blocks:
+        text_stripped = text.strip().replace('\n', ' ')
+
+        # 1. 블록 내 반복 줄 정리 (같은 문장 3번 이상 반복 → 2번으로)
+        lines = text.strip().split('\n')
+        if len(lines) > 2:
+            new_lines = [lines[0]]
+            for line in lines[1:]:
+                if new_lines.count(line) < 2:
+                    new_lines.append(line)
+            text = '\n'.join(new_lines)
+            text_stripped = text.replace('\n', ' ')
+
+        # 2. 연속 동일 블록 최대 2회
+        if prev_texts.count(text_stripped) >= 2:
+            removed_count += 1
+            continue
+
+        prev_texts.append(text_stripped)
+        if len(prev_texts) > 5:
+            prev_texts.pop(0)
+
+        cleaned_blocks.append((num, timecode, text))
+
+    # 번호 재정렬 + 재조립
+    output_lines = []
+    for i, (_, timecode, text) in enumerate(cleaned_blocks, 1):
+        output_lines.append(f"{i}\n{timecode}\n{text.strip()}\n")
+    output_content = "\n".join(output_lines)
+
+    with open(srt_path, 'w', encoding='utf-8') as f:
+        f.write(output_content)
+
+    # 검증 리포트
+    warnings = []
+    if removed_count > 0:
+        warnings.append(f"반복 블록 {removed_count}개 제거")
+    if len(cleaned_blocks) == 0:
+        warnings.append("⚠️ 블록 0개 — 추출 실패 의심")
+    elif len(cleaned_blocks) < 10:
+        warnings.append(f"⚠️ 블록 수 매우 적음 ({len(cleaned_blocks)}개) — 내용 확인 필요")
+
+    return {
+        "cleaned": True,
+        "blocks_original": len(blocks),
+        "blocks_after": len(cleaned_blocks),
+        "blocks_removed": removed_count,
+        "warnings": warnings,
+        "srt_path": srt_path
+    }
+
+
+@app.post("/v1/clean_srt")
+async def clean_srt_endpoint(request: dict):
+    """SRT 클리닝 + 검증 엔드포인트"""
+    import os
+    srt_path = request.get("srt_path", "")
+    if not srt_path:
+        raise HTTPException(status_code=400, detail="srt_path is required")
+    if not os.path.exists(srt_path):
+        raise HTTPException(status_code=404, detail=f"File not found: {srt_path}")
+    result = clean_srt(srt_path)
+    return {"status": "done", **result}
+
+
 @app.post("/v1/transcribe")
 async def transcribe_video(request: dict):
     """영상/음성 파일 자막 추출 (mlx-whisper)
@@ -805,12 +893,22 @@ async def transcribe_video(request: dict):
             raise HTTPException(status_code=500, detail=f"Whisper error: {stderr.decode()[-500:]}")
 
         logger.info(f"[transcribe] 완료: {output_srt} ({elapsed}s)")
+
+        # 자동 클리닝 + 검증
+        clean_result = clean_srt(output_srt)
+        if clean_result.get("blocks_removed", 0) > 0:
+            logger.info(f"[transcribe] 클리닝: {clean_result['blocks_removed']}개 반복 블록 제거")
+        if clean_result.get("warnings"):
+            for w in clean_result["warnings"]:
+                logger.warning(f"[transcribe] 검증 경고: {w}")
+
         return {
             "status": "done",
             "file": file_path,
             "srt_path": output_srt,
             "model": model,
-            "elapsed_sec": elapsed
+            "elapsed_sec": elapsed,
+            "clean": clean_result
         }
     except Exception as e:
         logger.error(f"[transcribe] 예외: {e}")
