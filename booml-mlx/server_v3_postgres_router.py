@@ -57,7 +57,7 @@ except ImportError as e:
 # 설정
 # ──────────────────────────────────────────────
 MAX_TOKENS_DEFAULT = 512  # 짧은 답변을 강제하기 위해 감소
-PORT = 8000
+PORT = int(os.environ.get("PORT", 8000))
 
 KST = timezone(timedelta(hours=9))
 
@@ -983,7 +983,7 @@ async def translate_srt(request: dict):
             import aiohttp as _aiohttp
             async with _aiohttp.ClientSession() as _sess:
                 async with _sess.post(
-                    "http://localhost:8000/v1/chat/completions",
+                    f"http://localhost:{PORT}/v1/chat/completions",
                     json={
                         "model": "booml-mlx",
                         "messages": [{"role": "user", "content": prompt}],
