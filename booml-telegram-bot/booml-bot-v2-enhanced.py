@@ -422,7 +422,7 @@ async def cmd_transcribe_scan(update: Update, context: ContextTypes.DEFAULT_TYPE
             if srt_out and os.path.exists(srt_out):
                 tr = await translate_srt_file(srt_out)
                 if tr.get("status") == "done":
-                    ko_path = tr.get("ko_srt_path", "")
+                    ko_path = tr.get("output", tr.get("ko_srt_path", ""))
                     await update.message.reply_text(f"🇰🇷 번역 완료!\n`{os.path.basename(ko_path)}`", parse_mode='Markdown')
         elif status_val == "skipped":
             await msg.edit_text(f"⏭️ 이미 처리됨: `{os.path.basename(folder)}`", parse_mode='Markdown')
