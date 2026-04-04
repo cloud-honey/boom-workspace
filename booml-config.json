@@ -2,31 +2,44 @@
   "agent": {
     "id": "booml",
     "name": "붐엘 (BoomL)",
-    "description": "macOS M4 Pro 최적화 로컬 LLM 에이전트",
-    "model": "ollama/qwen3:8b",
+    "description": "macOS M4 Pro 최적화 로컬 LLM 에이전트 - Gemma 4 26B A4B MoE MLX",
+    "model": "mlx-community/gemma-4-26b-a4b-it-4bit",
     "platform": "macos-only",
     "language": "english-only",
     "optimizations": {
       "metal_acceleration": true,
       "memory_efficient": true,
-      "low_latency": true
+      "low_latency": true,
+      "turboquant_4bit": true,
+      "moe_architecture": true,
+      "mlx_vlm_support": true
     },
     "capabilities": [
       "high-speed-inference",
       "local-processing",
       "mlx-ready",
-      "telegram-integration"
+      "telegram-integration",
+      "gemma-4-moe",
+      "26b-a4b-parameters",
+      "expert-mixture",
+      "multimodal-ready",
+      "mlx-vlm-powered"
     ],
     "performance": {
-      "current_speed": "42.92 t/s",
-      "target_speed": "100+ t/s",
-      "vram_usage": "11 GB",
-      "max_vram": "45 GB"
+      "current_speed": "74.354 t/s",
+      "target_speed": "80+ t/s",
+      "vram_usage": "15.4 GB",
+      "max_vram": "45 GB",
+      "model_size": "26B A4B MoE 4bit",
+      "experts": 8,
+      "active_experts": 2
     },
     "integration": {
       "openclaw": true,
       "telegram_bot": "@boomllm_bot",
       "mlx_framework": "installed",
+      "mlx_vlm": "0.4.3",
+      "gemma_4_moe": true,
       "status": "active"
     }
   }
