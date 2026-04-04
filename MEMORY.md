@@ -96,17 +96,15 @@
 
 ### 2026-04-04
 - **붐엘 자막 추출 완료**: ssis-313-C 일본어 → 한국어 번역 (ssis-313-C_KO.srt, 9,319줄)
-- **붐엘 TurboQuant 3.5bit 활성화**:
-  - mlx_vlm 내장 TurboQuant 사용 (kv_bits=3.5, kv_quant_scheme="turboquant")
-  - 기존 try/except로 묻혀있던 코드 수정 → 실제 적용
-  - KV 캐시 4.6x 압축, 생성 속도 69-72 t/s
-- **붐엘 토큰 통계 수집 수정**:
-  - MLXAdapter.generate() → (text, token_stats) 튜플 반환
-  - usage.prompt_tokens, completion_tokens, generation_tps, peak_memory_gb 정상 수집
-  - 수정 파일: model_router.py, booml_core.py, server_v3_postgres_router.py
-- **붐엘 /status TurboQuant 표시 수정**:
-  - HealthResponse에 turboquant/model_loaded/performance 필드 추가
-  - /status → TurboQuant: ✅ 활성 (4.6x 메모리 절약) 정상 표시
+- **붐엘 TurboQuant 3.5bit 활성화**: mlx_vlm 내장 TurboQuant (kv_bits=3.5, kv_quant_scheme="turboquant"), KV 캐시 4.6x 압축
+- **붐엘 토큰 통계 수집 수정**: MLXAdapter.generate() → (text, token_stats) 튜플 반환, usage 정상 수집
+- **붐엘 /status TurboQuant 표시 수정**: HealthResponse에 turboquant/model_loaded/performance 필드 추가
+- **붐엘 번역 웹검색 오라우팅 버그 수정**: 번역 프롬프트가 DuckDuckGo 검색으로 빠지던 버그 → is_system_prompt 조건 추가
+- **토큰 절약 설정**:
+  - bootstrapTotalMaxChars: 150k → 50k / bootstrapMaxChars → 15k
+  - 백업/로그 파일 archives 이동 (~55KB), AGENTS.md 슬림화 (10KB→2KB)
+  - 미사용 도구 비활성화: image_generate, tts, canvas, pdf
+- **워크스페이스 정리**: 구버전 봇/스크립트/Modelfile/아카이브 → memory/archives/
 ### 2026-04-03
 - **붐엘 Gemma 4 26B A4B MoE MLX 모델 업그레이드 완료**:
   - 모델: `mlx-community/gemma-4-26b-a4b-it-4bit` (26B Mixture of Experts)
