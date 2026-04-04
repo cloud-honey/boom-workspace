@@ -169,6 +169,9 @@ async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "• `/transcribe` — 기본 나스 폴더 전체 처리\n"
         "• `/transcribe [폴더경로]` — 지정 폴더 전체 처리\n"
         "• `/transcribe [폴더경로] base` — base 모델로 처리\n\n"
+        "📰 *이란 뉴스*\n"
+        "• `/news` — 이란 매체 vs 서방 매체 교차검증 리포트\n"
+        "• 자동: 매일 아침 8시 KST 전송\n\n"
         "🌐 *크롤링*\n"
         "• `/crawl [URL]` — 사이트/PDF 크롤링 + 한국어 번역 + 파일 저장\n\n"
         "📊 *상태 & 통계*\n"
@@ -1052,6 +1055,161 @@ async def cmd_translate(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await msg.edit_text(f"❌ 번역 실패\n`{str(err)[:300]}`", parse_mode='Markdown')
 
 
+# ── 이란 뉴스 교차검증 ────────────────────────────────────────────────────────
+
+IRAN_SOURCES = {
+    "이란측": [
+        {"name": "Tehran Times",    "rss": "https://www.tehrantimes.com/rss"},
+        {"name": "IRNA English",    "rss": "https://en.irna.ir/rss"},
+        {"name": "PressTV",         "rss": "https://www.presstv.ir/rss"},
+    ],
+    "서방/중립": [
+        {"name": "Reuters - World", "rss": "https://feeds.reuters.com/reuters/worldNews"},
+        {"name": "AP News",         "rss": "https://feeds.apnews.com/rss/apf-worldnews"},
+        {"name": "Al Jazeera",      "rss": "https://www.aljazeera.com/xml/rss/all.xml"},
+    ],
+}
+
+async def fetch_iran_news(max_per_source: int = 5) -> dict:
+    """RSS 피드에서 이란 관련 최신 기사 수집"""
+    import feedparser
+    keywords = ["iran", "tehran", "khamenei", "khomeini", "rouhani", "raisi", "irgc",
+                "nuclear", "sanctions", "persian", "islamic republic"]
+
+    results = {"이란측": [], "서방/중립": []}
+
+    async def fetch_feed(session, src_name, rss_url, side):
+        try:
+            async with session.get(rss_url, timeout=aiohttp.ClientTimeout(total=15),
+                                   headers={"User-Agent": "Mozilla/5.0"}) as resp:
+                if resp.status != 200:
+                    return
+                text = await resp.text()
+            feed = feedparser.parse(text)
+            count = 0
+            for entry in feed.entries:
+                if count >= max_per_source:
+                    break
+                title = entry.get("title", "")
+                summary = entry.get("summary", entry.get("description", ""))[:300]
+                link = entry.get("link", "")
+                # 이란측은 모든 기사, 서방측은 이란 관련 키워드 필터
+                if side == "이란측" or any(k in (title + summary).lower() for k in keywords):
+                    results[side].append({
+                        "source": src_name,
+                        "title": title,
+                        "summary": re.sub(r'<[^>]+>', '', summary).strip(),
+                        "link": link,
+                    })
+                    count += 1
+        except Exception as e:
+            logger.warning(f"RSS 수집 실패 {src_name}: {e}")
+
+    async with aiohttp.ClientSession() as session:
+        tasks = []
+        for side, sources in IRAN_SOURCES.items():
+            for src in sources:
+                tasks.append(fetch_feed(session, src["name"], src["rss"], side))
+        await asyncio.gather(*tasks)
+
+    return results
+
+
+async def analyze_iran_news(news: dict, user_id: int = None) -> str:
+    """붐엘에게 교차검증 분석 요청"""
+    iran_text = "\n".join(
+        f"[{a['source']}] {a['title']}\n{a['summary']}" for a in news["이란측"][:8]
+    ) or "기사 없음"
+    west_text = "\n".join(
+        f"[{a['source']}] {a['title']}\n{a['summary']}" for a in news["서방/중립"][:8]
+    ) or "기사 없음"
+
+    prompt = f"""아래는 오늘의 이란 관련 뉴스입니다. 이란 매체와 서방/중립 매체의 보도를 비교 분석해서 한국어로 리포트를 작성해주세요.
+
+## 이란 매체 기사
+{iran_text}
+
+## 서방/중립 매체 기사
+{west_text}
+
+다음 형식으로 작성해주세요:
+1. **주요 이슈 요약** (오늘 가장 중요한 이란 관련 이슈 2~3개)
+2. **공통 보도 내용** (양쪽 모두 동의하는 사실)
+3. **시각 차이** (이란 측 주장 vs 서방 측 주장이 다른 부분)
+4. **신뢰도 평가** (어느 쪽 보도가 더 균형잡혀 보이는지, 이유 포함)
+
+간결하고 명확하게 작성해주세요."""
+
+    response, elapsed, _ = await query_mlx(prompt, user_id=user_id, timeout_sec=300)
+    return response, elapsed
+
+
+async def send_news_report(bot, chat_id: int, user_id: int = None):
+    """뉴스 수집 + 분석 + 전송 (봇 객체 직접 사용)"""
+    try:
+        await bot.send_message(chat_id=chat_id, text="📡 이란 뉴스 수집 중...")
+        news = await fetch_iran_news()
+        iran_cnt = len(news["이란측"])
+        west_cnt = len(news["서방/중립"])
+
+        if iran_cnt + west_cnt == 0:
+            await bot.send_message(chat_id=chat_id, text="❌ 뉴스를 가져올 수 없습니다.")
+            return
+
+        await bot.send_message(chat_id=chat_id,
+            text=f"✅ 수집 완료 (이란측 {iran_cnt}건 · 서방 {west_cnt}건)\n🤖 교차검증 분석 중...")
+
+        analysis, elapsed = await analyze_iran_news(news, user_id=user_id)
+
+        # 저장
+        from datetime import datetime
+        import os
+        ts = datetime.now().strftime("%Y%m%d-%H%M")
+        save_dir = "/Users/sykim/workspace/crawled"
+        os.makedirs(save_dir, exist_ok=True)
+        save_path = os.path.join(save_dir, f"iran-news-{ts}.md")
+
+        raw_articles = "\n\n".join(
+            f"### [{a['source']}] {a['title']}\n{a['summary']}\n{a['link']}"
+            for side in ["이란측", "서방/중립"] for a in news[side]
+        )
+        with open(save_path, "w", encoding="utf-8") as f:
+            f.write(f"# 이란 뉴스 교차검증 리포트\n\n")
+            f.write(f"- **생성:** {datetime.now().strftime('%Y-%m-%d %H:%M')}\n")
+            f.write(f"- **수집:** 이란측 {iran_cnt}건 · 서방/중립 {west_cnt}건\n\n---\n\n")
+            f.write(f"## 분석 결과\n\n{analysis}\n\n---\n\n## 원문 기사\n\n{raw_articles}\n")
+
+        # 전송 (4000자 초과 시 분할)
+        header = f"📰 *이란 뉴스 교차검증 리포트*\n이란측 {iran_cnt}건 · 서방 {west_cnt}건 · {elapsed:.0f}초\n\n"
+        full = header + analysis
+        if len(full) > 4000:
+            await bot.send_message(chat_id=chat_id, text=header + analysis[:3800] + "\n_(계속)_", parse_mode="Markdown")
+            await bot.send_message(chat_id=chat_id, text=analysis[3800:], parse_mode="Markdown")
+        else:
+            try:
+                await bot.send_message(chat_id=chat_id, text=full, parse_mode="Markdown")
+            except:
+                await bot.send_message(chat_id=chat_id, text=full)
+
+        await bot.send_message(chat_id=chat_id, text=f"💾 저장: `{save_path}`", parse_mode="Markdown")
+
+    except Exception as e:
+        logger.error(f"뉴스 리포트 오류: {e}")
+        await bot.send_message(chat_id=chat_id, text=f"❌ 오류: {str(e)[:200]}")
+
+
+async def cmd_news(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """/news — 이란 뉴스 교차검증 리포트"""
+    user_id = update.effective_user.id
+    chat_id = update.effective_chat.id
+    await send_news_report(update.get_bot(), chat_id, user_id)
+
+
+async def scheduled_news_report(context):
+    """매일 아침 자동 뉴스 리포트"""
+    await send_news_report(context.bot, MASTER_CHAT_ID)
+
+
 async def cmd_crawl(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """/crawl [URL] — 사이트 크롤링 → 정리 → 한국어 번역 → 파일 저장"""
     import os
@@ -1274,6 +1432,7 @@ def main():
     app.add_handler(CommandHandler("clean", cmd_clean))
     app.add_handler(CommandHandler("cancel", cancel_task))
     app.add_handler(CommandHandler("crawl", cmd_crawl))
+    app.add_handler(CommandHandler("news", cmd_news))
     app.add_handler(CommandHandler("h", help_cmd))
     
     # 메시지 핸들러
@@ -1289,6 +1448,7 @@ def main():
         BotCommand("transcribe", "나스 폴더 자막 추출 [폴더경로] [모델]"),
         BotCommand("translate", "SRT 파일 한국어 번역 [srt경로]"),
         BotCommand("clean", "SRT 환각 제거 + 검증 [srt경로]"),
+        BotCommand("news", "이란 뉴스 교차검증 리포트"),
         BotCommand("crawl", "사이트 크롤링 + 번역 [URL]"),
         BotCommand("cancel", "진행 중인 작업 취소"),
         BotCommand("status", "서버 상태 확인"),
@@ -1301,6 +1461,14 @@ def main():
     async def post_init(application):
         await application.bot.set_my_commands(commands)
         print("✅ 봇 명령어 메뉴 등록 완료")
+        # 매일 아침 8시 (KST = UTC+9) 자동 뉴스 리포트
+        from telegram.ext import JobQueue
+        import datetime as dt
+        application.job_queue.run_daily(
+            scheduled_news_report,
+            time=dt.time(hour=8, minute=0, tzinfo=dt.timezone(dt.timedelta(hours=9))),
+            name="iran_daily_news"
+        )
 
     app.post_init = post_init
 
