@@ -701,6 +701,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     logger.info(f"📨 {user_name}({user_id}): '{user_msg[:50]}'")
 
+    # 슬래시 명령은 CommandHandler에서 처리 — 혹시 여기 도달하면 무시
+    if user_msg.strip().startswith("/"):
+        return
+
     # 자막추출 명령 처리
     if user_msg.strip().startswith("자막추출"):
         parts = user_msg.strip().split(None, 1)
@@ -911,18 +915,23 @@ async def handle_feedback_callback(update: Update, context: ContextTypes.DEFAULT
 
 
 async def cmd_translate(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """/번역 [srt파일경로] — SRT 파일 한국어 번역"""
+    """/translate [srt파일경로] — SRT 파일 한국어 번역"""
     import os
-    args = context.args
-    if not args:
+    # context.args가 한글 경로를 잘못 파싱할 수 있으므로 직접 파싱
+    raw_text = update.message.text or ""
+    # "/translate " 이후 전체 경로
+    if ' ' in raw_text:
+        srt_path = raw_text.split(' ', 1)[1].strip()
+    else:
+        srt_path = ' '.join(context.args).strip() if context.args else ""
+
+    if not srt_path:
         await update.message.reply_text(
-            "사용법: `/번역 /Volumes/seot401/torrent/파일명.srt`\n\n"
+            "사용법: `/translate /Volumes/seot401/torrent/파일명.srt`\n\n"
             "SRT 파일을 한국어로 번역합니다.",
             parse_mode='Markdown'
         )
         return
-
-    srt_path = ' '.join(args).strip()
     if not os.path.exists(srt_path):
         await update.message.reply_text(f"❌ 파일 없음: `{srt_path}`", parse_mode='Markdown')
         return
