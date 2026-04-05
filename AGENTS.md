@@ -55,6 +55,53 @@
 - **대시보드:** `/Users/sykim/workspace/openclaw-dashboard/`
 - ⚠️ 틸다(`~`) 경로 사용 금지 — 절대 경로만 사용
 
+## 히스토리 업데이트 규칙 (모든 에이전트 필수)
+### 1. 작업 완료 시 반드시 기록
+```
+## HH:MM KST [모델명] 작업명
+- 지시: 요청 내용
+- 작업: 수행 내용 (파일 경로 포함)
+- 결과: 성공/실패
+```
+
+**모델명 형식**:
+- 붐: `[sonnet]` (claude-sonnet-4-6)
+- 밤티: `[gpt-5.4]` (openai-codex/gpt-5.4)
+- 붐2: `[deepseek-chat]` (deepseek/deepseek-chat)
+- 붐3: `[gemini-2.5-flash]` (google/gemini-2.5-flash)
+- 붐4: `[qwen3-coder:30b]` (ollama/qwen3-coder:30b)
+- 붐엘: `[booml-mlx]` (booml-mlx/booml-mlx)
+
+### 2. 기록 위치
+- **일일 기록:** `/Users/sykim/.openclaw/workspace/memory/YYYY-MM-DD.md`
+- 파일 없으면 생성
+- 형식: `# 2026-04-05 일일 기록` 헤더 후 작업 기록 추가
+
+### 3. 기록 예시
+```markdown
+# 2026-04-05 일일 기록
+
+## 14:30 KST 붐2 코드 리팩토링
+- 지시: 사용자 인증 모듈 리팩토링
+- 작업: `/Users/sykim/workspace/vse-platform/src/auth.js` 수정
+- 결과: 성공 - JWT 토큰 검증 로직 개선
+
+## 15:45 KST 붐3 문서 업데이트
+- 지시: API 문서 보완
+- 작업: `/Users/sykim/workspace/openclaw-dashboard/docs/api.md` 추가
+- 결과: 성공 - 3개 엔드포인트 문서화
+```
+
+### 4. 대시보드 연동
+- 히스토리 카드는 `memory/YYYY-MM-DD.md` 파일을 읽어 표시
+- 리포트(`reports/`)와 별도로 관리
+- 작업 기록 없으면 대시보드에 "기록된 히스토리가 없습니다" 표시
+
+### 5. 붐4 특별 규칙
+- 영어 지시 필수
+- 결과는 별도 파일명으로 생성 (원본 수정 금지)
+- 작업 완료 후 붐에게 보고 (한국어 번역 포함)
+
 ## 메모리 규칙
 - 기억할 것은 반드시 파일에 기록 (멘탈노트 금지)
 - 일일 기록: `memory/YYYY-MM-DD.md`

@@ -60,6 +60,7 @@ ollama.abamti.com→8081 · mrht.abamti.com→5000 · occ.abamti.com→18789
 - 붐4 지시: 영어만
 - 폴백 발생: `⚠️[모델명]` 앞에 표시
 - 작업 전 컨펌: `담당/난이도/예상시간`
+- **히스토리 기록: 작업 완료 시 반드시 `memory/YYYY-MM-DD.md`에 기록**
 
 ## ⚠️ 미완료 (마스터 직접)
 - MRHT .env API 키 입력

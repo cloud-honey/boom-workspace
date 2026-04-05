@@ -13,6 +13,18 @@
 - **붐4:** ollama/qwen3-coder:30b-a3b-q4_K_M — QA/테스트 (sandbox 없음, 영어 지시 필수)
 - **붐엘:** booml-mlx/booml-mlx (Qwen3-14B-MLX-4bit) — 하트비트, 로컬 LLM 전용 (localhost:8000)
 
+## 히스토리 기록용 모델명 매핑
+| 에이전트 | 기록용 모델명 | 실제 모델 | 비고 |
+|---------|---------------|-----------|------|
+| 붐 | `[sonnet]` | claude-sonnet-4-6 | 기본 모델 (현재 deepseek-chat) |
+| 밤티 | `[gpt-5.4]` | openai-codex/gpt-5.4 | 반복 작업 전문 |
+| 붐2 | `[deepseek-chat]` | deepseek/deepseek-chat | 코딩 구현 |
+| 붐3 | `[gemini-2.5-flash]` | google/gemini-2.5-flash | 단순 수정 |
+| 붐4 | `[qwen3-coder:30b]` | ollama/qwen3-coder:30b | QA/테스트 (영어 지시) |
+| 붐엘 | `[booml-mlx]` | booml-mlx/booml-mlx | 로컬 LLM |
+
+**히스토리 기록 형식**: `## HH:MM KST [모델명] 작업명`
+
 ## API / 잔액
 - **DeepSeek 잔액:** ~$47.29 (2026-03-27 기준) — API: `https://api.deepseek.com/user/balance`
 - **Google Gemini:** gemini-2.5-flash (붐3 기본) / gemini-2.5-flash-lite (폴백)
