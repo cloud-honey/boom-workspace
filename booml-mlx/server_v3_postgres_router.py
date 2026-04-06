@@ -818,8 +818,21 @@ async def clean_srt_endpoint(request: dict):
     srt_path = request.get("srt_path", "")
     if not srt_path:
         raise HTTPException(status_code=400, detail="srt_path is required")
+    
+    # NAS 경로 변환: /Volumes/seot401/torrent → /Users/sykim/nas/torrent
+    original_path = srt_path
+    if srt_path.startswith("/Volumes/seot401/torrent"):
+        srt_path = srt_path.replace("/Volumes/seot401/torrent", "/Users/sykim/nas/torrent", 1)
+        logger.info(f"[clean_srt] 경로 변환: {original_path} → {srt_path}")
+    
     if not os.path.exists(srt_path):
-        raise HTTPException(status_code=404, detail=f"File not found: {srt_path}")
+        # 원본 경로도 확인
+        if original_path != srt_path and os.path.exists(original_path):
+            srt_path = original_path
+            logger.info(f"[clean_srt] 원본 경로 사용: {srt_path}")
+        else:
+            raise HTTPException(status_code=404, detail=f"File not found: {srt_path} (변환 후: {srt_path if original_path != srt_path else 'N/A'})")
+    
     result = clean_srt(srt_path)
     return {"status": "done", **result}
 
@@ -844,8 +857,20 @@ async def transcribe_video(request: dict):
 
     if not file_path:
         raise HTTPException(status_code=400, detail="file_path is required")
+    
+    # NAS 경로 변환: /Volumes/seot401/torrent → /Users/sykim/nas/torrent
+    original_path = file_path
+    if file_path.startswith("/Volumes/seot401/torrent"):
+        file_path = file_path.replace("/Volumes/seot401/torrent", "/Users/sykim/nas/torrent", 1)
+        logger.info(f"[transcribe] 경로 변환: {original_path} → {file_path}")
+    
     if not os.path.exists(file_path):
-        raise HTTPException(status_code=404, detail=f"File not found: {file_path}")
+        # 원본 경로도 확인
+        if original_path != file_path and os.path.exists(original_path):
+            file_path = original_path
+            logger.info(f"[transcribe] 원본 경로 사용: {file_path}")
+        else:
+            raise HTTPException(status_code=404, detail=f"File not found: {file_path} (변환 후: {file_path if original_path != file_path else 'N/A'})")
 
     output_dir = os.path.dirname(file_path)
     file_basename = os.path.basename(file_path)
@@ -960,8 +985,20 @@ async def translate_srt(request: dict):
 
     if not srt_path:
         raise HTTPException(status_code=400, detail="srt_path is required")
+    
+    # NAS 경로 변환: /Volumes/seot401/torrent → /Users/sykim/nas/torrent
+    original_path = srt_path
+    if srt_path.startswith("/Volumes/seot401/torrent"):
+        srt_path = srt_path.replace("/Volumes/seot401/torrent", "/Users/sykim/nas/torrent", 1)
+        logger.info(f"[translate_srt] 경로 변환: {original_path} → {srt_path}")
+    
     if not os.path.exists(srt_path):
-        raise HTTPException(status_code=404, detail=f"File not found: {srt_path}")
+        # 원본 경로도 확인
+        if original_path != srt_path and os.path.exists(original_path):
+            srt_path = original_path
+            logger.info(f"[translate_srt] 원본 경로 사용: {srt_path}")
+        else:
+            raise HTTPException(status_code=404, detail=f"File not found: {srt_path} (변환 후: {srt_path if original_path != srt_path else 'N/A'})")
 
     base = os.path.splitext(srt_path)[0]
     output_path = request.get("output_path", f"{base}_KO.srt")

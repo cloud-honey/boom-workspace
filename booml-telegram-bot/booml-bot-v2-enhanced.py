@@ -458,7 +458,7 @@ async def scan_nas_videos(folder: str) -> list:
 
 
 PIPELINE_STATE_FILE = "/Users/sykim/.openclaw/workspace/logs/transcribe_pipeline.json"
-WORK_LOG_FILE = "/Volumes/seot401/subtitle-work-log.md"
+WORK_LOG_FILE = "/Users/sykim/nas/subtitle-work-log.md"
 
 def load_pipeline_state() -> dict:
     """파이프라인 상태 불러오기"""
@@ -549,12 +549,24 @@ async def cmd_transcribe_scan(update: Update, context: ContextTypes.DEFAULT_TYPE
         limit = int(args[-1])
         args = args[:-1]
 
-    folder = ' '.join(args) if args else '/Volumes/seot401/torrent'
+    folder = ' '.join(args) if args else '/Users/sykim/nas/torrent'
 
     import os
+    
+    # NAS 경로 변환: /Volumes/seot401/torrent → /Users/sykim/nas/torrent
+    original_folder = folder
+    if folder.startswith("/Volumes/seot401/torrent"):
+        folder = folder.replace("/Volumes/seot401/torrent", "/Users/sykim/nas/torrent", 1)
+        logger.info(f"[transcribe] 경로 변환: {original_folder} → {folder}")
+    
     if not os.path.exists(folder):
-        await update.message.reply_text(f"❌ 경로 없음: `{folder}`", parse_mode='Markdown')
-        return
+        # 원본 경로도 확인
+        if original_folder != folder and os.path.exists(original_folder):
+            folder = original_folder
+            logger.info(f"[transcribe] 원본 경로 사용: {folder}")
+        else:
+            await update.message.reply_text(f"❌ 경로 없음: `{folder}` (변환 후: {folder if original_folder != folder else 'N/A'})", parse_mode='Markdown')
+            return
 
     # 파일 경로를 직접 준 경우 단일 파일 처리
     video_exts = {'.mp4', '.mkv', '.avi', '.mov', '.m4v', '.wmv'}
@@ -749,14 +761,26 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if user_msg.strip().startswith("자막추출"):
         parts = user_msg.strip().split(None, 1)
         if len(parts) < 2:
-            await update.message.reply_text("❌ 사용법: `자막추출 /Volumes/seot401/torrent/폴더명/파일.mp4`", parse_mode='Markdown')
+            await update.message.reply_text("❌ 사용법: `자막추출 /Users/sykim/nas/torrent/폴더명/파일.mp4`", parse_mode='Markdown')
             return
 
         file_path = parts[1].strip()
         import os
+        
+        # NAS 경로 변환: /Volumes/seot401/torrent → /Users/sykim/nas/torrent
+        original_path = file_path
+        if file_path.startswith("/Volumes/seot401/torrent"):
+            file_path = file_path.replace("/Volumes/seot401/torrent", "/Users/sykim/nas/torrent", 1)
+            logger.info(f"[자막추출] 경로 변환: {original_path} → {file_path}")
+        
         if not os.path.exists(file_path):
-            await update.message.reply_text(f"❌ 파일 없음: `{file_path}`", parse_mode='Markdown')
-            return
+            # 원본 경로도 확인
+            if original_path != file_path and os.path.exists(original_path):
+                file_path = original_path
+                logger.info(f"[자막추출] 원본 경로 사용: {file_path}")
+            else:
+                await update.message.reply_text(f"❌ 파일 없음: `{file_path}` (변환 후: {file_path if original_path != file_path else 'N/A'})", parse_mode='Markdown')
+                return
 
         srt_path = os.path.splitext(file_path)[0] + '.srt'
         if os.path.exists(srt_path):
@@ -962,15 +986,26 @@ async def cmd_clean(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if not srt_path:
         await update.message.reply_text(
-            "사용법: `/clean /Volumes/seot401/torrent/파일명.srt`\n\n"
+            "사용법: `/clean /Users/sykim/nas/torrent/파일명.srt`\n\n"
             "반복 자막 제거 + 검증 리포트를 출력합니다.",
             parse_mode='Markdown'
         )
         return
+    
+    # NAS 경로 변환: /Volumes/seot401/torrent → /Users/sykim/nas/torrent
+    original_path = srt_path
+    if srt_path.startswith("/Volumes/seot401/torrent"):
+        srt_path = srt_path.replace("/Volumes/seot401/torrent", "/Users/sykim/nas/torrent", 1)
+        logger.info(f"[clean] 경로 변환: {original_path} → {srt_path}")
 
     if not os.path.exists(srt_path):
-        await update.message.reply_text(f"❌ 파일 없음: `{srt_path}`", parse_mode='Markdown')
-        return
+        # 원본 경로도 확인
+        if original_path != srt_path and os.path.exists(original_path):
+            srt_path = original_path
+            logger.info(f"[clean] 원본 경로 사용: {srt_path}")
+        else:
+            await update.message.reply_text(f"❌ 파일 없음: `{srt_path}` (변환 후: {srt_path if original_path != srt_path else 'N/A'})", parse_mode='Markdown')
+            return
 
     msg = await update.message.reply_text(f"🧹 클리닝 중...\n`{os.path.basename(srt_path)}`", parse_mode='Markdown')
 
@@ -1016,14 +1051,26 @@ async def cmd_translate(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if not srt_path:
         await update.message.reply_text(
-            "사용법: `/translate /Volumes/seot401/torrent/파일명.srt`\n\n"
+            "사용법: `/translate /Users/sykim/nas/torrent/파일명.srt`\n\n"
             "SRT 파일을 한국어로 번역합니다.",
             parse_mode='Markdown'
         )
         return
+    
+    # NAS 경로 변환: /Volumes/seot401/torrent → /Users/sykim/nas/torrent
+    original_path = srt_path
+    if srt_path.startswith("/Volumes/seot401/torrent"):
+        srt_path = srt_path.replace("/Volumes/seot401/torrent", "/Users/sykim/nas/torrent", 1)
+        logger.info(f"[translate] 경로 변환: {original_path} → {srt_path}")
+
     if not os.path.exists(srt_path):
-        await update.message.reply_text(f"❌ 파일 없음: `{srt_path}`", parse_mode='Markdown')
-        return
+        # 원본 경로도 확인
+        if original_path != srt_path and os.path.exists(original_path):
+            srt_path = original_path
+            logger.info(f"[translate] 원본 경로 사용: {srt_path}")
+        else:
+            await update.message.reply_text(f"❌ 파일 없음: `{srt_path}` (변환 후: {srt_path if original_path != srt_path else 'N/A'})", parse_mode='Markdown')
+            return
 
     if not srt_path.endswith('.srt'):
         await update.message.reply_text("❌ .srt 파일만 지원합니다.", parse_mode='Markdown')
