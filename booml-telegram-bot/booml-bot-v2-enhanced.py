@@ -7,6 +7,7 @@
 import asyncio
 import logging
 import aiohttp
+import httpx
 import time
 import json
 from collections import deque
@@ -22,6 +23,7 @@ logger = logging.getLogger(__name__)
 
 BOT_TOKEN = '8592906266:AAGA326kDs1pNXbVRWbwtWxIUR3n9VkKQYE'
 MLX_SERVER_URL = 'http://localhost:8000'
+TOKEN_DASHBOARD_URL = 'http://localhost:8080'
 
 # 사용자별 대화 히스토리 (최근 10개 메시지 유지)
 user_histories = {}
@@ -43,6 +45,44 @@ def clear_cancel():
 
 def is_cancelled():
     return _cancel_requested
+
+
+async def log_to_token_dashboard(
+    platform: str,
+    model: str,
+    input_tokens: int,
+    output_tokens: int,
+    duration_ms: int,
+    success: bool,
+    source: str = "telegram"
+):
+    """
+    Send token usage data to token dashboard (fire-and-forget).
+    Args:
+        platform: Platform identifier (e.g., "booml-telegram")
+        model: Model name used
+        input_tokens: Number of input tokens
+        output_tokens: Number of output tokens
+        duration_ms: Request duration in milliseconds
+        success: Whether the request was successful
+        source: Source of the request (default: "telegram")
+    """
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            payload = {
+                "platform": platform,
+                "model": model,
+                "input_tokens": input_tokens,
+                "output_tokens": output_tokens,
+                "duration_ms": duration_ms,
+                "success": success,
+                "source": source
+            }
+            await client.post(f"{TOKEN_DASHBOARD_URL}/api/log", json=payload)
+    except Exception as e:
+        # Silently catch all exceptions (fire-and-forget)
+        logger.debug(f"Token dashboard logging failed: {e}")
+
 
 def get_user_history(user_id: int) -> deque:
     """사용자의 대화 히스토리 반환 (없으면 생성)"""
@@ -96,21 +136,80 @@ async def query_mlx(prompt: str, user_id: int = None, project_id: str = None, ti
                     if 'choices' in data and data['choices']:
                         response = data['choices'][0]['message']['content']
                         metadata = data.get('metadata', {})
-                        
+                        usage = data.get('usage', {})
+
                         # 히스토리에 저장 (user_id 있을 때만)
                         if user_id:
                             history = get_user_history(user_id)
                             history.append({"role": "user", "content": prompt})
                             history.append({"role": "assistant", "content": response})
-                        
+
+                        # Log token usage to dashboard (fire-and-forget)
+                        duration_ms = int(elapsed * 1000)
+                        input_tokens = usage.get('prompt_tokens', len(prompt) // 4)
+                        output_tokens = usage.get('completion_tokens', len(response) // 4)
+                        model_used = metadata.get('model_used', 'booml-mlx')
+                        asyncio.create_task(log_to_token_dashboard(
+                            platform="booml-telegram",
+                            model=model_used,
+                            input_tokens=input_tokens,
+                            output_tokens=output_tokens,
+                            duration_ms=duration_ms,
+                            success=True,
+                            source="telegram"
+                        ))
+
                         return response, elapsed, metadata
+
+                    # Log failure
+                    duration_ms = int(elapsed * 1000)
+                    asyncio.create_task(log_to_token_dashboard(
+                        platform="booml-telegram",
+                        model="booml-mlx",
+                        input_tokens=0,
+                        output_tokens=0,
+                        duration_ms=duration_ms,
+                        success=False,
+                        source="telegram"
+                    ))
                     return '응답 생성 실패', elapsed, {}
                 else:
+                    # Log failure
+                    duration_ms = int(elapsed * 1000)
+                    asyncio.create_task(log_to_token_dashboard(
+                        platform="booml-telegram",
+                        model="booml-mlx",
+                        input_tokens=0,
+                        output_tokens=0,
+                        duration_ms=duration_ms,
+                        success=False,
+                        source="telegram"
+                    ))
                     err = await resp.text()
                     return f'서버 오류 {resp.status}: {err[:100]}', elapsed, {}
     except asyncio.TimeoutError:
+        duration_ms = int((time.time() - start) * 1000)
+        asyncio.create_task(log_to_token_dashboard(
+            platform="booml-telegram",
+            model="booml-mlx",
+            input_tokens=0,
+            output_tokens=0,
+            duration_ms=duration_ms,
+            success=False,
+            source="telegram"
+        ))
         return '⏰ 응답 시간 초과 (120초)', time.time() - start, {}
     except Exception as e:
+        duration_ms = int((time.time() - start) * 1000)
+        asyncio.create_task(log_to_token_dashboard(
+            platform="booml-telegram",
+            model="booml-mlx",
+            input_tokens=0,
+            output_tokens=0,
+            duration_ms=duration_ms,
+            success=False,
+            source="telegram"
+        ))
         return f'연결 오류: {str(e)}', time.time() - start, {}
 
 

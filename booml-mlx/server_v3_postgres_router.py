@@ -22,6 +22,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 import uvicorn
 import aiohttp
+import httpx
 
 # ──────────────────────────────────────────────
 # 로깅
@@ -31,6 +32,45 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
+
+# ──────────────────────────────────────────────
+# Token Usage Logging
+# ──────────────────────────────────────────────
+async def log_to_token_dashboard(
+    platform: str,
+    model: str,
+    input_tokens: int,
+    output_tokens: int,
+    duration_ms: int,
+    success: bool,
+    source: str
+):
+    """
+    Send token usage data to token dashboard (fire-and-forget).
+    Args:
+        platform: Platform identifier (e.g., "booml", "booml2")
+        model: Model name used
+        input_tokens: Number of input tokens
+        output_tokens: Number of output tokens
+        duration_ms: Request duration in milliseconds
+        success: Whether the request was successful
+        source: Source of the request (e.g., "api", "telegram")
+    """
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            payload = {
+                "platform": platform,
+                "model": model,
+                "input_tokens": input_tokens,
+                "output_tokens": output_tokens,
+                "duration_ms": duration_ms,
+                "success": success,
+                "source": source
+            }
+            await client.post("http://localhost:8080/api/log", json=payload)
+    except Exception as e:
+        # Silently catch all exceptions (fire-and-forget)
+        logger.debug(f"Token dashboard logging failed: {e}")
 
 # 붐엘 아키텍처 모듈 임포트
 try:
@@ -696,6 +736,7 @@ async def health() -> HealthResponse:
 @app.post("/v1/chat/completions")
 async def chat_completion(request: ChatCompletionRequest) -> ChatCompletionResponse:
     """채팅 완성 (모델 라우팅 지원 + Tool Calling)"""
+    start_time = time.time()
     try:
         # ──────────────────────────────────────────────
         # Tool Calling 처리
@@ -766,6 +807,19 @@ async def chat_completion(request: ChatCompletionRequest) -> ChatCompletionRespo
                         "completion_tokens": token_stats.get("completion_tokens", 0),
                         "total_tokens": token_stats.get("total_tokens", 0),
                     }
+
+                    # Log token usage to dashboard (fire-and-forget)
+                    duration_ms = int((time.time() - start_time) * 1000)
+                    platform_name = "booml2" if PORT == 8001 else "booml"
+                    asyncio.create_task(log_to_token_dashboard(
+                        platform=platform_name,
+                        model=model_used or request.model or "gemma-4-26b-mlx",
+                        input_tokens=usage["prompt_tokens"],
+                        output_tokens=usage["completion_tokens"],
+                        duration_ms=duration_ms,
+                        success=True,
+                        source="api"
+                    ))
 
                     return ChatCompletionResponse(
                         choices=[ChatCompletionChoice(message=response_message)],
@@ -871,7 +925,20 @@ async def chat_completion(request: ChatCompletionRequest) -> ChatCompletionRespo
             
             # 응답 메시지 구성
             response_message = Message(role="assistant", content=response_text)
-            
+
+            # Log token usage to dashboard (fire-and-forget)
+            duration_ms = int((time.time() - start_time) * 1000)
+            platform_name = "booml2" if PORT == 8001 else "booml"
+            asyncio.create_task(log_to_token_dashboard(
+                platform=platform_name,
+                model=metadata.get("model_used", "booml-core"),
+                input_tokens=usage["prompt_tokens"],
+                output_tokens=usage["completion_tokens"],
+                duration_ms=duration_ms,
+                success=True,
+                source="api"
+            ))
+
             return ChatCompletionResponse(
                 choices=[ChatCompletionChoice(message=response_message)],
                 usage=usage,
@@ -917,7 +984,20 @@ async def chat_completion(request: ChatCompletionRequest) -> ChatCompletionRespo
             
             # 응답 메시지 구성
             response_message = Message(role="assistant", content=response_text)
-            
+
+            # Log token usage to dashboard (fire-and-forget)
+            duration_ms = int((time.time() - start_time) * 1000)
+            platform_name = "booml2" if PORT == 8001 else "booml"
+            asyncio.create_task(log_to_token_dashboard(
+                platform=platform_name,
+                model=model_used,
+                input_tokens=usage["prompt_tokens"],
+                output_tokens=usage["completion_tokens"],
+                duration_ms=duration_ms,
+                success=True,
+                source="api"
+            ))
+
             return ChatCompletionResponse(
                 choices=[ChatCompletionChoice(message=response_message)],
                 usage=usage,
@@ -950,9 +1030,26 @@ async def chat_completion(request: ChatCompletionRequest) -> ChatCompletionRespo
             response_text = await asyncio.to_thread(
                 mlx_model.generate, messages, request.max_tokens, request.temperature
             )
-            
+
             response_message = Message(role="assistant", content=response_text)
-            
+
+            # Approximate token counts
+            input_tokens = sum(len(m.content.split()) for m in messages)
+            output_tokens = len(response_text.split())
+
+            # Log token usage to dashboard (fire-and-forget)
+            duration_ms = int((time.time() - start_time) * 1000)
+            platform_name = "booml2" if PORT == 8001 else "booml"
+            asyncio.create_task(log_to_token_dashboard(
+                platform=platform_name,
+                model="mlx-v2",
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+                duration_ms=duration_ms,
+                success=True,
+                source="api"
+            ))
+
             return ChatCompletionResponse(
                 choices=[ChatCompletionChoice(message=response_message)],
                 metadata={
@@ -965,6 +1062,17 @@ async def chat_completion(request: ChatCompletionRequest) -> ChatCompletionRespo
     
     except Exception as e:
         logger.error(f"채팅 완성 실패: {e}")
+        # Log failure to dashboard (fire-and-forget)
+        duration_ms = int((time.time() - start_time) * 1000)
+        asyncio.create_task(log_to_token_dashboard(
+            platform="booml",
+            model=request.model or "unknown",
+            input_tokens=0,
+            output_tokens=0,
+            duration_ms=duration_ms,
+            success=False,
+            source="api"
+        ))
         raise HTTPException(status_code=500, detail=str(e))
 
 
