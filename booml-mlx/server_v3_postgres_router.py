@@ -204,48 +204,31 @@ async def get_news_summary() -> str:
 
 
 async def web_search(query: str) -> str:
-    """DuckDuckGo 웹 검색 (간단한 구현)"""
+    """DuckDuckGo 웹 검색 (duckduckgo-search 라이브러리)"""
     try:
-        import urllib.parse
-        import re
+        from duckduckgo_search import DDGS
+        import asyncio
 
-        # 검색어 URL 인코딩
-        encoded_query = urllib.parse.quote(query)
-        url = f"https://duckduckgo.com/html/?q={encoded_query}"
+        loop = asyncio.get_event_loop()
+        results = await loop.run_in_executor(
+            None,
+            lambda: list(DDGS().text(query, max_results=5))
+        )
 
-        async with aiohttp.ClientSession() as session:
-            async with session.get(url, timeout=10, headers={
-                'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36'
-            }) as resp:
-                if resp.status == 200:
-                    html = await resp.text()
+        if results:
+            summary = []
+            for i, r in enumerate(results[:5]):
+                title = r.get("title", "").strip()
+                body = r.get("body", "").strip()
+                if body:
+                    summary.append(f"{i+1}. [{title}] {body[:200]}")
+            if summary:
+                return "[웹 검색 결과]\n" + "\n".join(summary)
 
-                    # 간단한 결과 추출 (실제로는 더 정교한 파싱 필요)
-                    # DuckDuckGo 결과에서 텍스트 추출 시도
-                    import re
-                    # 결과 스니펫 찾기
-                    snippets = re.findall(r'class="result__snippet">(.*?)</a>', html, re.DOTALL)
-                    if snippets:
-                        # 첫 3개 결과 요약
-                        summary = []
-                        for i, snippet in enumerate(snippets[:3]):
-                            # HTML 태그 제거
-                            clean = re.sub(r'<.*?>', '', snippet)
-                            clean = clean.replace('&nbsp;', ' ').strip()
-                            if clean and len(clean) > 20:
-                                summary.append(f"{i+1}. {clean[:150]}...")
-
-                        if summary:
-                            return f"[웹 검색 결과]\n" + "\n".join(summary)
-
-                    return "웹 검색 결과를 찾을 수 없습니다."
-                else:
-                    return f"검색 실패 (HTTP {resp.status})"
-    except asyncio.TimeoutError:
-        return "검색 시간 초과"
+        return "웹 검색 결과를 찾을 수 없습니다."
     except Exception as e:
         logger.error(f"웹 검색 실패: {e}")
-        return "웹 검색 중 오류 발생"
+        return f"웹 검색 중 오류 발생: {str(e)}"
 
 
 # ──────────────────────────────────────────────
@@ -735,6 +718,19 @@ async def chat_completion(request: ChatCompletionRequest) -> ChatCompletionRespo
             # 최대 5회 tool call 루프 (무한 루프 방지)
             max_iterations = 5
             current_messages = [{"role": m.role, "content": m.content} for m in request.messages]
+
+            # 시스템 프롬프트가 없으면 툴 사용 유도 주입
+            has_system = any(m.get("role") == "system" for m in current_messages)
+            if not has_system:
+                tool_names = [t.get("function", {}).get("name", "") for t in request.tools]
+                system_content = (
+                    f"You have access to the following tools: {', '.join(tool_names)}. "
+                    "When the user asks for real-time information (weather, news, stock prices, files, etc.) "
+                    "that you cannot reliably answer from training data, you MUST call the appropriate tool. "
+                    "Do not fabricate or guess real-time data — use the tools instead. "
+                    "Respond in the same language as the user."
+                )
+                current_messages = [{"role": "system", "content": system_content}] + current_messages
 
             for iteration in range(max_iterations):
                 # 모델 호출
