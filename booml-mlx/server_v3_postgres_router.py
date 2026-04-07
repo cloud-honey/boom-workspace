@@ -743,7 +743,8 @@ async def chat_completion(request: ChatCompletionRequest) -> ChatCompletionRespo
                         current_messages,
                         strategy=None,
                         max_tokens=request.max_tokens,
-                        temperature=request.temperature
+                        temperature=request.temperature,
+                        tools=request.tools,
                     )
                 else:
                     # 기본 MLX 어댑터 사용

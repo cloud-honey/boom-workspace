@@ -132,11 +132,12 @@ class MLXAdapter(ModelAdapter):
             self.loaded = False
             logger.info(f"MLX 모델 언로드: {self.model_id}")
     
-    def generate(self, messages: List[Dict[str, str]], 
-                 max_tokens: int = 512, 
-                 temperature: float = 0.7) -> Tuple[str, Dict]:
+    def generate(self, messages: List[Dict[str, str]],
+                 max_tokens: int = 512,
+                 temperature: float = 0.7,
+                 tools: list = None) -> Tuple[str, Dict]:
         """응답 생성 - mlx_vlm 사용
-        
+
         Returns:
             Tuple[응답_텍스트, 토큰_통계]
             토큰_통계: {"prompt_tokens": int, "completion_tokens": int, "total_tokens": int,
@@ -145,9 +146,9 @@ class MLXAdapter(ModelAdapter):
         with self.lock:
             if not self.loaded:
                 self.load()
-            
+
             start_time = time.time()
-            
+
             try:
                 # mlx_vlm 또는 mlx_lm으로 생성 시도
                 try:
@@ -158,14 +159,20 @@ class MLXAdapter(ModelAdapter):
                     from mlx_lm import generate as generate_lm
                     generate_func = generate_lm
                     logger.debug("mlx_lm.generate 사용 (폴백)")
-                
+
                 # 메시지 포맷팅
                 if self.tokenizer.chat_template is not None:
+                    tmpl_kwargs = {
+                        "add_generation_prompt": True,
+                        "tokenize": False,
+                        "enable_thinking": False,
+                    }
+                    if tools:
+                        tmpl_kwargs["tools"] = tools
+                        logger.info(f"apply_chat_template에 tools {len(tools)}개 주입")
                     prompt = self.tokenizer.apply_chat_template(
                         messages,
-                        add_generation_prompt=True,
-                        tokenize=False,
-                        enable_thinking=False,
+                        **tmpl_kwargs,
                     )
                 else:
                     prompt = self._format_messages_fallback(messages)
@@ -471,12 +478,13 @@ class ModelRouter:
                 logger.warning(f"알 수 없는 라우팅 전략: {strategy}")
                 return self.route(RoutingStrategy.DEFAULT)
     
-    def generate_with_strategy(self, messages: List[Dict[str, str]], 
+    def generate_with_strategy(self, messages: List[Dict[str, str]],
                                strategy: Optional[RoutingStrategy] = None,
-                               max_tokens: int = 512, 
-                               temperature: float = 0.7) -> Tuple[Optional[str], str, Dict]:
+                               max_tokens: int = 512,
+                               temperature: float = 0.7,
+                               tools: list = None) -> Tuple[Optional[str], str, Dict]:
         """라우팅 전략에 따른 응답 생성
-        
+
         Returns:
             Tuple[응답_텍스트, 사용된_모델_이름, 토큰_통계]
         """
@@ -485,10 +493,10 @@ class ModelRouter:
         adapter = self.route(strategy)
         if not adapter:
             return None, "no_model_available", empty_stats
-        
+
         model_name = adapter.get_metadata().name
         try:
-            result = adapter.generate(messages, max_tokens, temperature)
+            result = adapter.generate(messages, max_tokens, temperature, tools=tools)
             # MLXAdapter는 (text, token_stats) 튜플 반환, DummyAdapter는 문자열 반환
             if isinstance(result, tuple):
                 response_text, token_stats = result
