@@ -80,15 +80,15 @@ def resolve_nas_path(file_path: str) -> str:
     """NAS 경로 해결: 존재하는 경로 반환"""
     # 먼저 변환 시도
     converted_path, was_converted = convert_nas_path(file_path)
-    
+
     if os.path.exists(converted_path):
         return converted_path
-    
+
     # 변환된 경로가 없으면 원본 확인
     if was_converted and os.path.exists(file_path):
         logger.info(f"[NAS 경로] 변환된 경로 없음, 원본 사용: {file_path}")
         return file_path
-    
+
     # 다른 가능한 경로 시도
     possible_paths = [
         converted_path,
@@ -96,18 +96,114 @@ def resolve_nas_path(file_path: str) -> str:
         file_path.replace("/Volumes/seot401", NAS_BASE_PATH, 1) if "/Volumes/seot401" in file_path else None,
         file_path.replace("/nas", NAS_BASE_PATH, 1) if file_path.startswith("/nas") else None,
     ]
-    
+
     for path in possible_paths:
         if path and os.path.exists(path):
             logger.info(f"[NAS 경로] 대체 경로 발견: {path}")
             return path
-    
+
     # 어느 경로도 존재하지 않음
     return converted_path if was_converted else file_path
 
 
-async def query_mlx(prompt: str, user_id: int = None, project_id: str = None, timeout_sec: int = 120, routing_strategy: str = None, messages: list = None) -> tuple[str, float, dict]:
-    """MLX 서버 쿼리 — 아키텍처 통합 버전"""
+# ──────────────────────────────────────────────
+# Tool Calling 정의 (OpenAI 포맷)
+# ──────────────────────────────────────────────
+BOOML_TOOLS = [
+    {
+        "type": "function",
+        "function": {
+            "name": "web_search",
+            "description": "Search the web for current information using DuckDuckGo",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "Search query string"
+                    }
+                },
+                "required": ["query"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "read_file",
+            "description": "Read contents of a local file. Only /Users/sykim/ directory is allowed.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "path": {
+                        "type": "string",
+                        "description": "Absolute path to the file to read"
+                    }
+                },
+                "required": ["path"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "write_file",
+            "description": "Write content to a local file. Only /Users/sykim/ directory is allowed.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "path": {
+                        "type": "string",
+                        "description": "Absolute path to the file to write"
+                    },
+                    "content": {
+                        "type": "string",
+                        "description": "Content to write to the file"
+                    }
+                },
+                "required": ["path", "content"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "list_dir",
+            "description": "List contents of a directory. Only /Users/sykim/ directory is allowed.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "path": {
+                        "type": "string",
+                        "description": "Absolute path to the directory"
+                    }
+                },
+                "required": ["path"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_weather",
+            "description": "Get current weather information for a city using open-meteo.com API",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "city": {
+                        "type": "string",
+                        "description": "City name (e.g., Seoul, Tokyo, New York)"
+                    }
+                },
+                "required": ["city"]
+            }
+        }
+    }
+]
+
+
+async def query_mlx(prompt: str, user_id: int = None, project_id: str = None, timeout_sec: int = 120, routing_strategy: str = None, messages: list = None, enable_tools: bool = True) -> tuple[str, float, dict]:
+    """MLX 서버 쿼리 — 아키텍처 통합 + Tool Calling"""
     start = time.time()
     try:
         # 사용자 ID 문자열 변환
@@ -116,19 +212,30 @@ async def query_mlx(prompt: str, user_id: int = None, project_id: str = None, ti
         # 히스토리 포함 메시지 구성 (없으면 단일 메시지)
         api_messages = messages if messages else [{'role': 'user', 'content': prompt}]
 
+        # API 요청 바디 구성
+        json_body = {
+            'messages': api_messages,
+            'model': 'booml-mlx',
+            'max_tokens': 2048,
+            'temperature': 0.5,
+            'user_id': user_id_str,
+            'project_id': project_id,
+        }
+
+        # routing_strategy 추가
+        if routing_strategy:
+            json_body['routing_strategy'] = routing_strategy
+
+        # Tool calling 활성화 시 tools 추가
+        if enable_tools:
+            json_body['tools'] = BOOML_TOOLS
+            logger.info(f"Tool calling 활성화: {len(BOOML_TOOLS)}개 툴 전달")
+
         # 아키텍처 통합 요청
         async with aiohttp.ClientSession() as session:
             async with session.post(
                 f'{MLX_SERVER_URL}/v1/chat/completions',
-                json={
-                    'messages': api_messages,
-                    'model': 'booml-mlx',
-                    'max_tokens': 2048,
-                    'temperature': 0.5,
-                    'user_id': user_id_str,
-                    'project_id': project_id,
-                    **({"routing_strategy": routing_strategy} if routing_strategy else {})
-                },
+                json=json_body,
                 timeout=aiohttp.ClientTimeout(total=timeout_sec)
             ) as resp:
                 elapsed = time.time() - start

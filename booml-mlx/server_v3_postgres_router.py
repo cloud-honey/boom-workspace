@@ -59,7 +59,60 @@ except ImportError as e:
 MAX_TOKENS_DEFAULT = 512  # 짧은 답변을 강제하기 위해 감소
 PORT = int(os.environ.get("PORT", 8000))
 
+# NAS 경로 설정 - 환경 변수 또는 기본값
+NAS_BASE_PATH = os.environ.get("NAS_BASE_PATH", "/Users/sykim/nas")
+NAS_TORRENT_PATH = os.path.join(NAS_BASE_PATH, "torrent")
+OLD_NAS_PATH = "/Volumes/seot401/torrent"
+
+logger.info(f"NAS 경로 설정: 기본={NAS_TORRENT_PATH}, 이전={OLD_NAS_PATH}")
+
 KST = timezone(timedelta(hours=9))
+
+# ──────────────────────────────────────────────
+# NAS 경로 유틸리티
+# ──────────────────────────────────────────────
+def convert_nas_path(file_path: str) -> tuple[str, bool]:
+    """
+    NAS 경로 변환: 이전 경로 → 새 경로
+    Returns: (변환된_경로, 변환_여부)
+    """
+    if file_path.startswith(OLD_NAS_PATH):
+        new_path = file_path.replace(OLD_NAS_PATH, NAS_TORRENT_PATH, 1)
+        logger.info(f"[NAS 경로 변환] {file_path} → {new_path}")
+        return new_path, True
+    return file_path, False
+
+def resolve_nas_path(file_path: str) -> str:
+    """
+    NAS 경로 해결: 존재하는 경로 반환
+    우선순위: 1. 변환된 경로, 2. 원본 경로, 3. 다른 가능한 경로
+    """
+    # 먼저 변환 시도
+    converted_path, was_converted = convert_nas_path(file_path)
+    
+    if os.path.exists(converted_path):
+        return converted_path
+    
+    # 변환된 경로가 없으면 원본 확인
+    if was_converted and os.path.exists(file_path):
+        logger.info(f"[NAS 경로] 변환된 경로 없음, 원본 사용: {file_path}")
+        return file_path
+    
+    # 다른 가능한 경로 시도
+    possible_paths = [
+        converted_path,
+        file_path,
+        file_path.replace("/Volumes/seot401", NAS_BASE_PATH, 1) if "/Volumes/seot401" in file_path else None,
+        file_path.replace("/nas", NAS_BASE_PATH, 1) if file_path.startswith("/nas") else None,
+    ]
+    
+    for path in possible_paths:
+        if path and os.path.exists(path):
+            logger.info(f"[NAS 경로] 대체 경로 발견: {path}")
+            return path
+    
+    # 어느 경로도 존재하지 않음
+    return converted_path if was_converted else file_path
 
 # 세션 관리 (사용자 ID -> 세션 ID 매핑)
 user_sessions = {}
@@ -155,18 +208,18 @@ async def web_search(query: str) -> str:
     try:
         import urllib.parse
         import re
-        
+
         # 검색어 URL 인코딩
         encoded_query = urllib.parse.quote(query)
         url = f"https://duckduckgo.com/html/?q={encoded_query}"
-        
+
         async with aiohttp.ClientSession() as session:
             async with session.get(url, timeout=10, headers={
                 'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36'
             }) as resp:
                 if resp.status == 200:
                     html = await resp.text()
-                    
+
                     # 간단한 결과 추출 (실제로는 더 정교한 파싱 필요)
                     # DuckDuckGo 결과에서 텍스트 추출 시도
                     import re
@@ -181,10 +234,10 @@ async def web_search(query: str) -> str:
                             clean = clean.replace('&nbsp;', ' ').strip()
                             if clean and len(clean) > 20:
                                 summary.append(f"{i+1}. {clean[:150]}...")
-                        
+
                         if summary:
                             return f"[웹 검색 결과]\n" + "\n".join(summary)
-                    
+
                     return "웹 검색 결과를 찾을 수 없습니다."
                 else:
                     return f"검색 실패 (HTTP {resp.status})"
@@ -193,6 +246,180 @@ async def web_search(query: str) -> str:
     except Exception as e:
         logger.error(f"웹 검색 실패: {e}")
         return "웹 검색 중 오류 발생"
+
+
+# ──────────────────────────────────────────────
+# Tool Calling 실행 함수들
+# ──────────────────────────────────────────────
+
+async def tool_read_file(path: str) -> str:
+    """로컬 파일 읽기 툴 (보안: /Users/sykim/ 하위만 허용)"""
+    try:
+        import os
+
+        # 절대 경로 변환
+        abs_path = os.path.abspath(path)
+
+        # 보안 체크: /Users/sykim/ 하위만 허용
+        if not abs_path.startswith("/Users/sykim/"):
+            return f"Error: Access denied. Only /Users/sykim/ directory is allowed."
+
+        # 파일 존재 확인
+        if not os.path.exists(abs_path):
+            return f"Error: File not found: {abs_path}"
+
+        if not os.path.isfile(abs_path):
+            return f"Error: Not a file: {abs_path}"
+
+        # 파일 크기 체크 (최대 1MB)
+        file_size = os.path.getsize(abs_path)
+        if file_size > 1024 * 1024:  # 1MB
+            return f"Error: File too large ({file_size} bytes). Max 1MB."
+
+        # 파일 읽기
+        with open(abs_path, 'r', encoding='utf-8', errors='ignore') as f:
+            content = f.read()
+
+        return f"File: {abs_path}\n\n{content}"
+
+    except Exception as e:
+        logger.error(f"tool_read_file 실패: {e}")
+        return f"Error reading file: {e}"
+
+
+async def tool_write_file(path: str, content: str) -> str:
+    """로컬 파일 쓰기 툴 (보안: /Users/sykim/ 하위만 허용)"""
+    try:
+        import os
+
+        # 절대 경로 변환
+        abs_path = os.path.abspath(path)
+
+        # 보안 체크: /Users/sykim/ 하위만 허용
+        if not abs_path.startswith("/Users/sykim/"):
+            return f"Error: Access denied. Only /Users/sykim/ directory is allowed."
+
+        # 디렉토리 생성 (필요시)
+        dir_path = os.path.dirname(abs_path)
+        os.makedirs(dir_path, exist_ok=True)
+
+        # 파일 쓰기
+        with open(abs_path, 'w', encoding='utf-8') as f:
+            f.write(content)
+
+        return f"Successfully wrote {len(content)} characters to {abs_path}"
+
+    except Exception as e:
+        logger.error(f"tool_write_file 실패: {e}")
+        return f"Error writing file: {e}"
+
+
+async def tool_list_dir(path: str) -> str:
+    """디렉토리 목록 조회 툴 (보안: /Users/sykim/ 하위만 허용)"""
+    try:
+        import os
+
+        # 절대 경로 변환
+        abs_path = os.path.abspath(path)
+
+        # 보안 체크: /Users/sykim/ 하위만 허용
+        if not abs_path.startswith("/Users/sykim/"):
+            return f"Error: Access denied. Only /Users/sykim/ directory is allowed."
+
+        # 디렉토리 존재 확인
+        if not os.path.exists(abs_path):
+            return f"Error: Directory not found: {abs_path}"
+
+        if not os.path.isdir(abs_path):
+            return f"Error: Not a directory: {abs_path}"
+
+        # 디렉토리 목록 조회
+        entries = os.listdir(abs_path)
+
+        # 파일/디렉토리 구분하여 정렬
+        files = []
+        dirs = []
+        for entry in entries:
+            full_path = os.path.join(abs_path, entry)
+            if os.path.isdir(full_path):
+                dirs.append(f"[DIR]  {entry}")
+            else:
+                size = os.path.getsize(full_path)
+                files.append(f"[FILE] {entry} ({size} bytes)")
+
+        result = f"Directory: {abs_path}\n\n"
+        result += "\n".join(sorted(dirs) + sorted(files))
+
+        return result
+
+    except Exception as e:
+        logger.error(f"tool_list_dir 실패: {e}")
+        return f"Error listing directory: {e}"
+
+
+async def tool_get_weather(city: str) -> str:
+    """날씨 조회 툴 (open-meteo.com 무료 API 사용)"""
+    try:
+        # 1. 도시명 → 좌표 변환
+        geocoding_url = f"https://geocoding-api.open-meteo.com/v1/search?name={city}&count=1&language=ko"
+
+        async with aiohttp.ClientSession() as session:
+            async with session.get(geocoding_url, timeout=10) as resp:
+                if resp.status != 200:
+                    return f"Error: Failed to geocode city '{city}'"
+
+                geo_data = await resp.json()
+
+                if not geo_data.get("results"):
+                    return f"Error: City '{city}' not found"
+
+                location = geo_data["results"][0]
+                lat = location["latitude"]
+                lon = location["longitude"]
+                location_name = location.get("name", city)
+                country = location.get("country", "")
+
+            # 2. 날씨 조회
+            weather_url = (
+                f"https://api.open-meteo.com/v1/forecast?"
+                f"latitude={lat}&longitude={lon}"
+                f"&current=temperature_2m,relative_humidity_2m,weather_code,wind_speed_10m"
+                f"&hourly=temperature_2m,precipitation_probability"
+                f"&timezone=auto"
+            )
+
+            async with session.get(weather_url, timeout=10) as resp:
+                if resp.status != 200:
+                    return f"Error: Failed to fetch weather data"
+
+                weather_data = await resp.json()
+                current = weather_data.get("current", {})
+
+                # 날씨 코드 → 한국어 설명
+                weather_code = current.get("weather_code", 0)
+                weather_desc = {
+                    0: "맑음", 1: "대체로 맑음", 2: "부분 흐림", 3: "흐림",
+                    45: "안개", 48: "서리 안개",
+                    51: "이슬비", 53: "이슬비", 55: "이슬비",
+                    61: "비", 63: "비", 65: "강한 비",
+                    71: "눈", 73: "눈", 75: "강설",
+                    80: "소나기", 81: "소나기", 82: "강한 소나기",
+                    95: "뇌우", 96: "뇌우", 99: "뇌우"
+                }.get(weather_code, "알 수 없음")
+
+                result = f"[{location_name}, {country} 날씨]\n"
+                result += f"온도: {current.get('temperature_2m', 'N/A')}°C\n"
+                result += f"습도: {current.get('relative_humidity_2m', 'N/A')}%\n"
+                result += f"날씨: {weather_desc}\n"
+                result += f"풍속: {current.get('wind_speed_10m', 'N/A')} km/h"
+
+                return result
+
+    except asyncio.TimeoutError:
+        return "Error: Weather API timeout"
+    except Exception as e:
+        logger.error(f"tool_get_weather 실패: {e}")
+        return f"Error fetching weather: {e}"
 
 
 async def get_realtime_data(user_message: str = None) -> str:
@@ -270,6 +497,7 @@ class ChatCompletionRequest(BaseModel):
     temperature: float = Field(0.7, description="온도")
     stream: bool = Field(False, description="스트리밍 여부")
     routing_strategy: Optional[str] = Field(None, description="라우팅 전략 (default/fast/quality)")
+    tools: Optional[List[Dict[str, Any]]] = Field(None, description="Tool calling 지원")
 
 
 class FeedbackRequest(BaseModel):
@@ -487,8 +715,126 @@ async def health() -> HealthResponse:
 
 @app.post("/v1/chat/completions")
 async def chat_completion(request: ChatCompletionRequest) -> ChatCompletionResponse:
-    """채팅 완성 (모델 라우팅 지원)"""
+    """채팅 완성 (모델 라우팅 지원 + Tool Calling)"""
     try:
+        # ──────────────────────────────────────────────
+        # Tool Calling 처리
+        # ──────────────────────────────────────────────
+        if request.tools:
+            logger.info(f"Tool calling 모드 활성화: {len(request.tools)}개 툴 제공됨")
+
+            # 툴 실행 함수 매핑
+            tool_functions = {
+                "web_search": lambda args: web_search(args.get("query", "")),
+                "read_file": lambda args: tool_read_file(args.get("path", "")),
+                "write_file": lambda args: tool_write_file(args.get("path", ""), args.get("content", "")),
+                "list_dir": lambda args: tool_list_dir(args.get("path", "")),
+                "get_weather": lambda args: tool_get_weather(args.get("city", "")),
+            }
+
+            # 최대 5회 tool call 루프 (무한 루프 방지)
+            max_iterations = 5
+            current_messages = [{"role": m.role, "content": m.content} for m in request.messages]
+
+            for iteration in range(max_iterations):
+                # 모델 호출
+                if MODEL_ROUTING_ENABLED:
+                    response_text, model_used, token_stats = model_router.generate_with_strategy(
+                        current_messages,
+                        strategy=None,
+                        max_tokens=request.max_tokens,
+                        temperature=request.temperature
+                    )
+                else:
+                    # 기본 MLX 어댑터 사용
+                    from model_router import model_registry
+                    adapter = model_registry.get_adapter("gemma-4-26b-mlx")
+                    if not adapter:
+                        raise HTTPException(status_code=500, detail="모델 어댑터 없음")
+                    response_text, token_stats = adapter.generate(
+                        current_messages, request.max_tokens, request.temperature
+                    )
+                    model_used = "gemma-4-26b-mlx"
+
+                # tool_call 파싱 (Gemma 4 포맷: <|tool_call>call:함수명{인자}<tool_call|>)
+                import re
+                tool_call_pattern = r'<\|tool_call>(.*?)<tool_call\|>'
+                tool_calls = re.findall(tool_call_pattern, response_text, re.DOTALL)
+
+                if not tool_calls:
+                    # 툴 호출 없음 → 최종 응답 반환
+                    logger.info(f"Tool calling 완료 (반복 {iteration+1}회)")
+                    response_message = Message(role="assistant", content=response_text)
+
+                    usage = {
+                        "prompt_tokens": token_stats.get("prompt_tokens", 0),
+                        "completion_tokens": token_stats.get("completion_tokens", 0),
+                        "total_tokens": token_stats.get("total_tokens", 0),
+                    }
+
+                    return ChatCompletionResponse(
+                        choices=[ChatCompletionChoice(message=response_message)],
+                        usage=usage,
+                        metadata={
+                            "tool_calling_enabled": True,
+                            "tool_call_iterations": iteration + 1,
+                            "model_used": model_used,
+                            "generation_tps": token_stats.get("generation_tps", 0.0),
+                        }
+                    )
+
+                # 툴 호출 파싱 및 실행
+                tool_results = []
+                for tool_call_str in tool_calls:
+                    # Gemma 4 포맷 파싱: call:함수명{인자1:<|"|>값<|"|>,인자2:<|"|>값<|"|>}
+                    # 예: call:web_search{query:<|"|>날씨<|"|>}
+                    func_match = re.match(r'call:(\w+)\{(.*?)\}', tool_call_str, re.DOTALL)
+                    if not func_match:
+                        logger.warning(f"툴 호출 파싱 실패: {tool_call_str}")
+                        continue
+
+                    func_name = func_match.group(1)
+                    args_str = func_match.group(2)
+
+                    # 인자 파싱
+                    args = {}
+                    arg_pattern = r'(\w+):<\|"\|>(.*?)<\|"\|>'
+                    for arg_match in re.finditer(arg_pattern, args_str):
+                        key = arg_match.group(1)
+                        value = arg_match.group(2)
+                        args[key] = value
+
+                    logger.info(f"툴 실행: {func_name}({args})")
+
+                    # 툴 실행
+                    if func_name in tool_functions:
+                        try:
+                            result = await tool_functions[func_name](args)
+                            tool_results.append(f"<|tool_response|>{func_name}: {result}<|tool_response|>")
+                        except Exception as e:
+                            logger.error(f"툴 실행 실패 ({func_name}): {e}")
+                            tool_results.append(f"<|tool_response|>{func_name}: Error - {e}<|tool_response|>")
+                    else:
+                        logger.warning(f"알 수 없는 툴: {func_name}")
+                        tool_results.append(f"<|tool_response|>{func_name}: Unknown tool<|tool_response|>")
+
+                # tool_response를 메시지에 추가
+                current_messages.append({"role": "assistant", "content": response_text})
+                current_messages.append({"role": "tool", "content": "\n".join(tool_results)})
+
+                logger.info(f"Tool call 반복 {iteration+1}: {len(tool_calls)}개 툴 실행됨")
+
+            # 최대 반복 도달
+            logger.warning(f"Tool calling 최대 반복 도달 ({max_iterations}회)")
+            response_message = Message(role="assistant", content="Tool calling 최대 반복 초과")
+            return ChatCompletionResponse(
+                choices=[ChatCompletionChoice(message=response_message)],
+                metadata={"tool_calling_error": "max_iterations_reached"}
+            )
+
+        # ──────────────────────────────────────────────
+        # 일반 채팅 완성 (Tool Calling 비활성화)
+        # ──────────────────────────────────────────────
         # 실시간 데이터 수집 (첫 번째 사용자 메시지인 경우)
         realtime_data = ""
         user_messages = [m for m in request.messages if m.role == "user"]
@@ -510,8 +856,8 @@ async def chat_completion(request: ChatCompletionRequest) -> ChatCompletionRespo
             except ValueError:
                 logger.warning(f"알 수 없는 라우팅 전략: {request.routing_strategy}")
         
-        # 아키텍처 통합 모드
-        if ARCHITECTURE_ENABLED:
+        # 아키텍처 통합 모드 (routing_strategy="direct"이면 메모리 없이 모델 직접 호출)
+        if ARCHITECTURE_ENABLED and request.routing_strategy != "direct":
             # 붐엘 코어를 통한 메시지 처리
             last_user_message = user_messages[-1].content if user_messages else ""
             response_text, metadata = booml_core.process_message(
@@ -819,19 +1165,11 @@ async def clean_srt_endpoint(request: dict):
     if not srt_path:
         raise HTTPException(status_code=400, detail="srt_path is required")
     
-    # NAS 경로 변환: /Volumes/seot401/torrent → /Users/sykim/nas/torrent
-    original_path = srt_path
-    if srt_path.startswith("/Volumes/seot401/torrent"):
-        srt_path = srt_path.replace("/Volumes/seot401/torrent", "/Users/sykim/nas/torrent", 1)
-        logger.info(f"[clean_srt] 경로 변환: {original_path} → {srt_path}")
+    # NAS 경로 해결
+    srt_path = resolve_nas_path(srt_path)
     
     if not os.path.exists(srt_path):
-        # 원본 경로도 확인
-        if original_path != srt_path and os.path.exists(original_path):
-            srt_path = original_path
-            logger.info(f"[clean_srt] 원본 경로 사용: {srt_path}")
-        else:
-            raise HTTPException(status_code=404, detail=f"File not found: {srt_path} (변환 후: {srt_path if original_path != srt_path else 'N/A'})")
+        raise HTTPException(status_code=404, detail=f"File not found: {srt_path}")
     
     result = clean_srt(srt_path)
     return {"status": "done", **result}
@@ -858,19 +1196,11 @@ async def transcribe_video(request: dict):
     if not file_path:
         raise HTTPException(status_code=400, detail="file_path is required")
     
-    # NAS 경로 변환: /Volumes/seot401/torrent → /Users/sykim/nas/torrent
-    original_path = file_path
-    if file_path.startswith("/Volumes/seot401/torrent"):
-        file_path = file_path.replace("/Volumes/seot401/torrent", "/Users/sykim/nas/torrent", 1)
-        logger.info(f"[transcribe] 경로 변환: {original_path} → {file_path}")
+    # NAS 경로 해결
+    file_path = resolve_nas_path(file_path)
     
     if not os.path.exists(file_path):
-        # 원본 경로도 확인
-        if original_path != file_path and os.path.exists(original_path):
-            file_path = original_path
-            logger.info(f"[transcribe] 원본 경로 사용: {file_path}")
-        else:
-            raise HTTPException(status_code=404, detail=f"File not found: {file_path} (변환 후: {file_path if original_path != file_path else 'N/A'})")
+        raise HTTPException(status_code=404, detail=f"File not found: {file_path}")
 
     output_dir = os.path.dirname(file_path)
     file_basename = os.path.basename(file_path)
@@ -986,19 +1316,11 @@ async def translate_srt(request: dict):
     if not srt_path:
         raise HTTPException(status_code=400, detail="srt_path is required")
     
-    # NAS 경로 변환: /Volumes/seot401/torrent → /Users/sykim/nas/torrent
-    original_path = srt_path
-    if srt_path.startswith("/Volumes/seot401/torrent"):
-        srt_path = srt_path.replace("/Volumes/seot401/torrent", "/Users/sykim/nas/torrent", 1)
-        logger.info(f"[translate_srt] 경로 변환: {original_path} → {srt_path}")
+    # NAS 경로 해결
+    srt_path = resolve_nas_path(srt_path)
     
     if not os.path.exists(srt_path):
-        # 원본 경로도 확인
-        if original_path != srt_path and os.path.exists(original_path):
-            srt_path = original_path
-            logger.info(f"[translate_srt] 원본 경로 사용: {srt_path}")
-        else:
-            raise HTTPException(status_code=404, detail=f"File not found: {srt_path} (변환 후: {srt_path if original_path != srt_path else 'N/A'})")
+        raise HTTPException(status_code=404, detail=f"File not found: {srt_path}")
 
     base = os.path.splitext(srt_path)[0]
     output_path = request.get("output_path", f"{base}_KO.srt")
