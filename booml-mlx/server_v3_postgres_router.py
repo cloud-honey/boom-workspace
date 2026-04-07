@@ -341,68 +341,65 @@ async def tool_list_dir(path: str) -> str:
 
 
 async def tool_get_weather(city: str) -> str:
-    """날씨 조회 툴 (open-meteo.com 무료 API 사용)"""
+    """날씨 조회 툴 (wttr.in API — 한국어 도시명 지원, 현재+3일 예보)"""
     try:
-        # 1. 도시명 → 좌표 변환
-        geocoding_url = f"https://geocoding-api.open-meteo.com/v1/search?name={city}&count=1&language=ko"
+        import urllib.parse
+        # 한국어 도시명 → 영어 변환
+        KR_CITY_MAP = {
+            "서울": "Seoul", "부산": "Busan", "인천": "Incheon", "대구": "Daegu",
+            "대전": "Daejeon", "광주": "Gwangju", "울산": "Ulsan", "수원": "Suwon",
+            "제주": "Jeju", "제주도": "Jeju", "강릉": "Gangneung", "춘천": "Chuncheon",
+            "전주": "Jeonju", "청주": "Cheongju", "창원": "Changwon", "포항": "Pohang",
+            "경주": "Gyeongju", "여수": "Yeosu", "목포": "Mokpo", "평택": "Pyeongtaek",
+        }
+        search_city = KR_CITY_MAP.get(city.strip(), city)
+        encoded_city = urllib.parse.quote(search_city)
 
         async with aiohttp.ClientSession() as session:
-            async with session.get(geocoding_url, timeout=10) as resp:
+            url = f"https://wttr.in/{encoded_city}?format=j1"
+            async with session.get(url, timeout=aiohttp.ClientTimeout(total=10)) as resp:
                 if resp.status != 200:
-                    return f"Error: Failed to geocode city '{city}'"
+                    return f"날씨 정보를 가져올 수 없습니다 (HTTP {resp.status})"
+                data = await resp.json(content_type=None)
 
-                geo_data = await resp.json()
+            cur = data["current_condition"][0]
+            weather_days = data["weather"]
 
-                if not geo_data.get("results"):
-                    return f"Error: City '{city}' not found"
+            def weather_desc(code):
+                code = int(code)
+                return {
+                    113: "맑음", 116: "부분 흐림", 119: "흐림", 122: "흐림",
+                    143: "안개", 176: "소나기", 185: "이슬비", 200: "뇌우",
+                    227: "눈날림", 230: "눈보라", 248: "안개", 260: "짙은 안개",
+                    263: "이슬비", 266: "이슬비", 281: "어는 비", 284: "어는 비",
+                    293: "비", 296: "비", 299: "강한 비", 302: "강한 비",
+                    305: "폭우", 308: "폭우", 311: "진눈깨비", 314: "진눈깨비",
+                    317: "진눈깨비", 320: "눈", 323: "눈", 326: "눈",
+                    329: "강설", 332: "강설", 335: "폭설", 338: "폭설",
+                    350: "우박", 353: "소나기", 356: "강한 소나기", 359: "폭우",
+                    362: "진눈깨비 소나기", 365: "진눈깨비 소나기", 368: "눈 소나기",
+                    371: "강한 눈 소나기", 374: "우박 소나기", 377: "우박 소나기",
+                    386: "뇌우", 389: "폭우 뇌우", 392: "눈 뇌우", 395: "폭설 뇌우",
+                }.get(code, "흐림")
 
-                location = geo_data["results"][0]
-                lat = location["latitude"]
-                lon = location["longitude"]
-                location_name = location.get("name", city)
-                country = location.get("country", "")
+            result = f"[{search_city} 날씨]\n"
+            result += f"■ 현재: {weather_desc(cur['weatherCode'])} {cur['temp_C']}°C (체감 {cur['FeelsLikeC']}°C), 습도 {cur['humidity']}%, 풍속 {cur['windspeedKmph']}km/h\n"
 
-            # 2. 날씨 조회
-            weather_url = (
-                f"https://api.open-meteo.com/v1/forecast?"
-                f"latitude={lat}&longitude={lon}"
-                f"&current=temperature_2m,relative_humidity_2m,weather_code,wind_speed_10m"
-                f"&hourly=temperature_2m,precipitation_probability"
-                f"&timezone=auto"
-            )
+            day_labels = ["오늘", "내일", "모레"]
+            for i, (day, label) in enumerate(zip(weather_days[:3], day_labels)):
+                hourly = day.get("hourly", [{}])
+                rain_prob = max((int(h.get("chanceofrain", 0)) for h in hourly), default=0)
+                result += (f"■ {label}: {weather_desc(day['hourly'][4]['weatherCode'] if day.get('hourly') else 113)} "
+                           f"최고 {day['maxtempC']}°C / 최저 {day['mintempC']}°C, 강수확률 {rain_prob}%\n")
 
-            async with session.get(weather_url, timeout=10) as resp:
-                if resp.status != 200:
-                    return f"Error: Failed to fetch weather data"
-
-                weather_data = await resp.json()
-                current = weather_data.get("current", {})
-
-                # 날씨 코드 → 한국어 설명
-                weather_code = current.get("weather_code", 0)
-                weather_desc = {
-                    0: "맑음", 1: "대체로 맑음", 2: "부분 흐림", 3: "흐림",
-                    45: "안개", 48: "서리 안개",
-                    51: "이슬비", 53: "이슬비", 55: "이슬비",
-                    61: "비", 63: "비", 65: "강한 비",
-                    71: "눈", 73: "눈", 75: "강설",
-                    80: "소나기", 81: "소나기", 82: "강한 소나기",
-                    95: "뇌우", 96: "뇌우", 99: "뇌우"
-                }.get(weather_code, "알 수 없음")
-
-                result = f"[{location_name}, {country} 날씨]\n"
-                result += f"온도: {current.get('temperature_2m', 'N/A')}°C\n"
-                result += f"습도: {current.get('relative_humidity_2m', 'N/A')}%\n"
-                result += f"날씨: {weather_desc}\n"
-                result += f"풍속: {current.get('wind_speed_10m', 'N/A')} km/h"
-
-                return result
+            return result.strip()
 
     except asyncio.TimeoutError:
-        return "Error: Weather API timeout"
+        return "날씨 API 응답 시간 초과"
     except Exception as e:
         logger.error(f"tool_get_weather 실패: {e}")
-        return f"Error fetching weather: {e}"
+        return f"날씨 정보를 가져오는 중 오류 발생: {str(e)}"
+
 
 
 async def get_realtime_data(user_message: str = None) -> str:
@@ -725,10 +722,11 @@ async def chat_completion(request: ChatCompletionRequest) -> ChatCompletionRespo
                 tool_names = [t.get("function", {}).get("name", "") for t in request.tools]
                 system_content = (
                     f"You have access to the following tools: {', '.join(tool_names)}. "
-                    "When the user asks for real-time information (weather, news, stock prices, files, etc.) "
-                    "that you cannot reliably answer from training data, you MUST call the appropriate tool. "
-                    "Do not fabricate or guess real-time data — use the tools instead. "
-                    "Respond in the same language as the user."
+                    "RULES: "
+                    "1. When the user asks for real-time information (weather, news, stock prices, files, etc.), you MUST call the appropriate tool. Never fabricate or guess real-time data. "
+                    "2. For follow-up questions (e.g. '내일은?', '모레는?', '거기는?'), infer the missing context (city, topic, etc.) from the conversation history and call the tool again with the inferred context. "
+                    "3. The get_weather tool returns today + tomorrow + day-after-tomorrow forecast. Use this data to answer questions about future weather without calling the tool again. "
+                    "4. Respond in the same language as the user (Korean if user speaks Korean)."
                 )
                 current_messages = [{"role": "system", "content": system_content}] + current_messages
 
