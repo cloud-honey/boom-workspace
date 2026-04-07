@@ -59,24 +59,34 @@ def format_history_for_api(history: deque) -> list:
     return messages
 
 
-async def query_mlx(prompt: str, user_id: int = None, project_id: str = None, timeout_sec: int = 120) -> tuple[str, float, dict]:
+BOOML_TOOLS = [
+    {"type":"function","function":{"name":"web_search","description":"Search the web for real-time information","parameters":{"type":"object","properties":{"query":{"type":"string","description":"Search query"}},"required":["query"]}}},
+    {"type":"function","function":{"name":"get_weather","description":"Get current and 3-day forecast weather for a city","parameters":{"type":"object","properties":{"city":{"type":"string","description":"City name (Korean or English)"}},"required":["city"]}}},
+    {"type":"function","function":{"name":"read_file","description":"Read a local file","parameters":{"type":"object","properties":{"path":{"type":"string","description":"Absolute file path under /Users/sykim/"}},"required":["path"]}}},
+    {"type":"function","function":{"name":"write_file","description":"Write content to a local file","parameters":{"type":"object","properties":{"path":{"type":"string"},"content":{"type":"string"}},"required":["path","content"]}}},
+    {"type":"function","function":{"name":"list_dir","description":"List directory contents","parameters":{"type":"object","properties":{"path":{"type":"string"}},"required":["path"]}}},
+]
+
+async def query_mlx(prompt: str, user_id: int = None, project_id: str = None, timeout_sec: int = 120, messages: list = None) -> tuple[str, float, dict]:
     """MLX 서버 쿼리 — 아키텍처 통합 버전"""
     start = time.time()
     try:
         # 사용자 ID 문자열 변환
         user_id_str = str(user_id) if user_id else "anonymous"
-        
+        api_messages = messages if messages else [{'role': 'user', 'content': prompt}]
+
         # 아키텍처 통합 요청
         async with aiohttp.ClientSession() as session:
             async with session.post(
                 f'{MLX_SERVER_URL}/v1/chat/completions',
                 json={
-                    'messages': [{'role': 'user', 'content': prompt}],
+                    'messages': api_messages,
                     'model': 'booml-mlx',
                     'max_tokens': 512,
                     'temperature': 0.5,
                     'user_id': user_id_str,
-                    'project_id': project_id
+                    'project_id': project_id,
+                    'tools': BOOML_TOOLS,
                 },
                 timeout=aiohttp.ClientTimeout(total=timeout_sec)
             ) as resp:
@@ -877,7 +887,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     processing = await update.message.reply_text("⚡ 생각 중...")
 
-    response, elapsed, metadata = await query_mlx(user_msg, user_id=user_id)
+    history = get_user_history(user_id)
+    history_msgs = format_history_for_api(history)
+    full_messages = history_msgs + [{'role': 'user', 'content': user_msg}]
+    response, elapsed, metadata = await query_mlx(user_msg, user_id=user_id, messages=full_messages)
 
     logger.info(f"✅ 응답: {len(response)}자, {elapsed:.1f}초")
 
