@@ -6,6 +6,7 @@
 """
 import asyncio
 import logging
+import os
 import aiohttp
 import time
 import json
@@ -60,24 +61,73 @@ def format_history_for_api(history: deque) -> list:
     return messages
 
 
-async def query_mlx(prompt: str, user_id: int = None, project_id: str = None, timeout_sec: int = 120) -> tuple[str, float, dict]:
+# ──────────────────────────────────────────────
+# NAS 경로 유틸리티
+# ──────────────────────────────────────────────
+NAS_BASE_PATH = "/Users/sykim/nas"
+NAS_TORRENT_PATH = os.path.join(NAS_BASE_PATH, "torrent")
+OLD_NAS_PATH = "/Volumes/seot401/torrent"
+
+def convert_nas_path(file_path: str) -> tuple[str, bool]:
+    """NAS 경로 변환: 이전 경로 → 새 경로"""
+    if file_path.startswith(OLD_NAS_PATH):
+        new_path = file_path.replace(OLD_NAS_PATH, NAS_TORRENT_PATH, 1)
+        logger.info(f"[NAS 경로 변환] {file_path} → {new_path}")
+        return new_path, True
+    return file_path, False
+
+def resolve_nas_path(file_path: str) -> str:
+    """NAS 경로 해결: 존재하는 경로 반환"""
+    # 먼저 변환 시도
+    converted_path, was_converted = convert_nas_path(file_path)
+    
+    if os.path.exists(converted_path):
+        return converted_path
+    
+    # 변환된 경로가 없으면 원본 확인
+    if was_converted and os.path.exists(file_path):
+        logger.info(f"[NAS 경로] 변환된 경로 없음, 원본 사용: {file_path}")
+        return file_path
+    
+    # 다른 가능한 경로 시도
+    possible_paths = [
+        converted_path,
+        file_path,
+        file_path.replace("/Volumes/seot401", NAS_BASE_PATH, 1) if "/Volumes/seot401" in file_path else None,
+        file_path.replace("/nas", NAS_BASE_PATH, 1) if file_path.startswith("/nas") else None,
+    ]
+    
+    for path in possible_paths:
+        if path and os.path.exists(path):
+            logger.info(f"[NAS 경로] 대체 경로 발견: {path}")
+            return path
+    
+    # 어느 경로도 존재하지 않음
+    return converted_path if was_converted else file_path
+
+
+async def query_mlx(prompt: str, user_id: int = None, project_id: str = None, timeout_sec: int = 120, routing_strategy: str = None, messages: list = None) -> tuple[str, float, dict]:
     """MLX 서버 쿼리 — 아키텍처 통합 버전"""
     start = time.time()
     try:
         # 사용자 ID 문자열 변환
         user_id_str = str(user_id) if user_id else "anonymous"
-        
+
+        # 히스토리 포함 메시지 구성 (없으면 단일 메시지)
+        api_messages = messages if messages else [{'role': 'user', 'content': prompt}]
+
         # 아키텍처 통합 요청
         async with aiohttp.ClientSession() as session:
             async with session.post(
                 f'{MLX_SERVER_URL}/v1/chat/completions',
                 json={
-                    'messages': [{'role': 'user', 'content': prompt}],
+                    'messages': api_messages,
                     'model': 'booml-mlx',
                     'max_tokens': 2048,
                     'temperature': 0.5,
                     'user_id': user_id_str,
-                    'project_id': project_id
+                    'project_id': project_id,
+                    **({"routing_strategy": routing_strategy} if routing_strategy else {})
                 },
                 timeout=aiohttp.ClientTimeout(total=timeout_sec)
             ) as resp:
@@ -591,20 +641,12 @@ async def cmd_transcribe_scan(update: Update, context: ContextTypes.DEFAULT_TYPE
 
     import os
     
-    # NAS 경로 변환: /Volumes/seot401/torrent → /Users/sykim/nas/torrent
-    original_folder = folder
-    if folder.startswith("/Volumes/seot401/torrent"):
-        folder = folder.replace("/Volumes/seot401/torrent", "/Users/sykim/nas/torrent", 1)
-        logger.info(f"[transcribe] 경로 변환: {original_folder} → {folder}")
+    # NAS 경로 해결
+    folder = resolve_nas_path(folder)
     
     if not os.path.exists(folder):
-        # 원본 경로도 확인
-        if original_folder != folder and os.path.exists(original_folder):
-            folder = original_folder
-            logger.info(f"[transcribe] 원본 경로 사용: {folder}")
-        else:
-            await update.message.reply_text(f"❌ 경로 없음: `{folder}` (변환 후: {folder if original_folder != folder else 'N/A'})", parse_mode='Markdown')
-            return
+        await update.message.reply_text(f"❌ 경로 없음: `{folder}`", parse_mode='Markdown')
+        return
 
     # 파일 경로를 직접 준 경우 단일 파일 처리
     video_exts = {'.mp4', '.mkv', '.avi', '.mov', '.m4v', '.wmv'}
@@ -805,20 +847,12 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         file_path = parts[1].strip()
         import os
         
-        # NAS 경로 변환: /Volumes/seot401/torrent → /Users/sykim/nas/torrent
-        original_path = file_path
-        if file_path.startswith("/Volumes/seot401/torrent"):
-            file_path = file_path.replace("/Volumes/seot401/torrent", "/Users/sykim/nas/torrent", 1)
-            logger.info(f"[자막추출] 경로 변환: {original_path} → {file_path}")
+        # NAS 경로 해결
+        file_path = resolve_nas_path(file_path)
         
         if not os.path.exists(file_path):
-            # 원본 경로도 확인
-            if original_path != file_path and os.path.exists(original_path):
-                file_path = original_path
-                logger.info(f"[자막추출] 원본 경로 사용: {file_path}")
-            else:
-                await update.message.reply_text(f"❌ 파일 없음: `{file_path}` (변환 후: {file_path if original_path != file_path else 'N/A'})", parse_mode='Markdown')
-                return
+            await update.message.reply_text(f"❌ 파일 없음: `{file_path}`", parse_mode='Markdown')
+            return
 
         srt_path = os.path.splitext(file_path)[0] + '.srt'
         if os.path.exists(srt_path):
@@ -915,7 +949,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     processing = await update.message.reply_text("⚡ 생각 중...")
 
-    response, elapsed, metadata = await query_mlx(user_msg, user_id=user_id)
+    # 대화 히스토리 포함해서 API 호출
+    history = get_user_history(user_id)
+    history_msgs = format_history_for_api(history)
+    full_messages = history_msgs + [{'role': 'user', 'content': user_msg}]
+    response, elapsed, metadata = await query_mlx(user_msg, user_id=user_id, messages=full_messages)
 
     logger.info(f"✅ 응답: {len(response)}자, {elapsed:.1f}초")
 
@@ -1030,20 +1068,12 @@ async def cmd_clean(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
     
-    # NAS 경로 변환: /Volumes/seot401/torrent → /Users/sykim/nas/torrent
-    original_path = srt_path
-    if srt_path.startswith("/Volumes/seot401/torrent"):
-        srt_path = srt_path.replace("/Volumes/seot401/torrent", "/Users/sykim/nas/torrent", 1)
-        logger.info(f"[clean] 경로 변환: {original_path} → {srt_path}")
+    # NAS 경로 해결
+    srt_path = resolve_nas_path(srt_path)
 
     if not os.path.exists(srt_path):
-        # 원본 경로도 확인
-        if original_path != srt_path and os.path.exists(original_path):
-            srt_path = original_path
-            logger.info(f"[clean] 원본 경로 사용: {srt_path}")
-        else:
-            await update.message.reply_text(f"❌ 파일 없음: `{srt_path}` (변환 후: {srt_path if original_path != srt_path else 'N/A'})", parse_mode='Markdown')
-            return
+        await update.message.reply_text(f"❌ 파일 없음: `{srt_path}`", parse_mode='Markdown')
+        return
 
     msg = await update.message.reply_text(f"🧹 클리닝 중...\n`{os.path.basename(srt_path)}`", parse_mode='Markdown')
 
@@ -1095,20 +1125,12 @@ async def cmd_translate(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
     
-    # NAS 경로 변환: /Volumes/seot401/torrent → /Users/sykim/nas/torrent
-    original_path = srt_path
-    if srt_path.startswith("/Volumes/seot401/torrent"):
-        srt_path = srt_path.replace("/Volumes/seot401/torrent", "/Users/sykim/nas/torrent", 1)
-        logger.info(f"[translate] 경로 변환: {original_path} → {srt_path}")
+    # NAS 경로 해결
+    srt_path = resolve_nas_path(srt_path)
 
     if not os.path.exists(srt_path):
-        # 원본 경로도 확인
-        if original_path != srt_path and os.path.exists(original_path):
-            srt_path = original_path
-            logger.info(f"[translate] 원본 경로 사용: {srt_path}")
-        else:
-            await update.message.reply_text(f"❌ 파일 없음: `{srt_path}` (변환 후: {srt_path if original_path != srt_path else 'N/A'})", parse_mode='Markdown')
-            return
+        await update.message.reply_text(f"❌ 파일 없음: `{srt_path}`", parse_mode='Markdown')
+        return
 
     if not srt_path.endswith('.srt'):
         await update.message.reply_text("❌ .srt 파일만 지원합니다.", parse_mode='Markdown')
@@ -1140,25 +1162,51 @@ IRAN_SOURCES = {
     "이란측": [
         {"name": "PressTV (Iran)",  "rss": "https://www.presstv.ir/rss/rss-101.xml"},   # Iran 섹션 전용
         {"name": "PressTV (World)", "rss": "https://www.presstv.ir/rss.xml"},            # 전체 뉴스
-        {"name": "IRNA English",    "rss": "https://en.irna.ir/rss.xml"},                # 수정됨 rss→rss.xml
-        {"name": "Tehran Times (Google)", "rss": "https://news.google.com/rss/search?q=tehran+times+iran&hl=en&gl=US&ceid=US:en"},  # Tehran Times 대체
     ],
     "서방/중립": [
-        {"name": "Reuters - World", "rss": "https://feeds.reuters.com/reuters/worldNews"},
-        {"name": "AP News",         "rss": "https://feeds.apnews.com/rss/apf-worldnews"},
-        {"name": "Al Jazeera",      "rss": "https://www.aljazeera.com/xml/rss/all.xml"},
+        {"name": "Reuters Iran", "rss": "https://news.google.com/rss/search?q=iran+reuters&hl=en-US&gl=US&ceid=US:en"},
+        {"name": "AP News Iran", "rss": "https://news.google.com/rss/search?q=iran+ap+news&hl=en-US&gl=US&ceid=US:en"},
+        {"name": "BBC Iran",     "rss": "https://news.google.com/rss/search?q=iran+bbc&hl=en-US&gl=US&ceid=US:en"},
+        {"name": "Iran Ceasefire", "rss": "https://news.google.com/rss/search?q=iran+ceasefire+OR+truce+OR+gaza&hl=en-US&gl=US&ceid=US:en"},
     ],
 }
 
-async def fetch_iran_news(max_per_source: int = 5, max_hours: int = 24) -> dict:
-    """RSS 피드에서 이란 관련 최신 기사 수집 (최근 max_hours 시간 이내만)"""
+async def fetch_iran_news(max_per_source: int = 5, max_hours: int = 0) -> dict:
+    """RSS 피드에서 이란 관련 최신 기사 수집 (최근 max_hours 시간 이내, 중복 제외)"""
+    import os
     import feedparser
     import email.utils
     from datetime import datetime, timezone, timedelta
     keywords = ["iran", "tehran", "khamenei", "khomeini", "rouhani", "raisi", "irgc",
-                "nuclear", "sanctions", "persian", "islamic republic"]
+                "nuclear", "sanctions", "persian", "islamic republic",
+                "ceasefire", "cease-fire", "truce", "gaza", "hostage", "hamas", "hezbollah",
+                "missile", "drone", "attack", "strait of hormuz"]
+    # 서방측은 Google RSS가 이미 이란 관련이므로, 키워드 없이 수거 (title/summary에 iran 관련 단어 포함만 확인)
+    west_keywords = ["iran", "tehran", "khamenei", "irgc", "nuclear", "sanction", "persian",
+                     "ceasefire", "cease-fire", "truce", "gaza", "hamas", "hezbollah", "hormuz"]
 
-    cutoff = datetime.now(timezone.utc) - timedelta(hours=max_hours)
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=max_hours) if max_hours > 0 else None
+    now_utc = datetime.now(timezone.utc)
+    dedup_window = timedelta(hours=1)  # 1시간 이내 수집된 링크만 중복으로 간주
+
+    # ── 중복 추적 파일 ({link: iso_timestamp} 형식) ────────────────────────
+    seen_file = "/Users/sykim/workspace/crawled/iran-news-seen.json"
+    seen_links = set()
+    if os.path.exists(seen_file):
+        try:
+            with open(seen_file, "r", encoding="utf-8") as f:
+                raw = json.load(f)
+            # 구형(list) 포맷 호환 처리
+            if isinstance(raw, list):
+                raw = {}
+            # 1시간 이내 수집된 링크만 중복 대상으로
+            seen_links = {
+                link for link, ts_str in raw.items()
+                if now_utc - datetime.fromisoformat(ts_str) < dedup_window
+            }
+        except Exception:
+            seen_links = set()
+
     results = {"이란측": [], "서방/중립": []}
 
     def parse_pub_date(entry) -> datetime | None:
@@ -1206,11 +1254,15 @@ async def fetch_iran_news(max_per_source: int = 5, max_hours: int = 24) -> dict:
                 pub_dt = parse_pub_date(entry)
 
                 # 시간 필터: 파싱 성공 시 cutoff 이후만, 실패 시 통과
-                if pub_dt and pub_dt < cutoff:
+                if cutoff and pub_dt and pub_dt < cutoff:
                     continue
 
-                # 이란측은 모든 기사, 서방측은 이란 관련 키워드 필터
-                if side == "이란측" or any(k in (title + summary).lower() for k in keywords):
+                # 이란측은 모든 기사, 서방측은 이란 관련 키워드 필터 (브로드 매치)
+                # 중복 필터: 이미 수집된 링크 제외
+                if not link or link in seen_links:
+                    continue
+                kw_list = keywords if side == "이란측" else west_keywords
+                if side == "이란측" or any(k in (title + summary).lower() for k in kw_list):
                     results[side].append({
                         "source": src_name,
                         "title": title,
@@ -1229,6 +1281,10 @@ async def fetch_iran_news(max_per_source: int = 5, max_hours: int = 24) -> dict:
             for src in sources:
                 tasks.append(fetch_feed(session, src["name"], src["rss"], side))
         await asyncio.gather(*tasks)
+
+    # 최신순 정렬 (pub_dt 없는 기사는 뒤로)
+    for side in results:
+        results[side].sort(key=lambda a: a["pub_dt"] or datetime.min.replace(tzinfo=timezone.utc), reverse=True)
 
     return results
 
@@ -1258,15 +1314,16 @@ async def analyze_iran_news(news: dict, user_id: int = None) -> str:
 
 간결하고 명확하게 작성해주세요."""
 
-    response, elapsed, _ = await query_mlx(prompt, user_id=user_id, timeout_sec=300)
+    # routing_strategy="direct" → 메모리/히스토리 주입 없이 순수 모델 직접 호출
+    response, elapsed, _ = await query_mlx(prompt, user_id=None, timeout_sec=300, routing_strategy="direct")
     return response, elapsed
 
 
-async def send_news_report(bot, chat_id: int, user_id: int = None):
+async def send_news_report(bot, chat_id: int, user_id: int = None, save_seen: bool = False):
     """뉴스 수집 + 분석 + 전송 (봇 객체 직접 사용)"""
     try:
         await bot.send_message(chat_id=chat_id, text="📡 이란 뉴스 수집 중...")
-        news = await fetch_iran_news()
+        news = await fetch_iran_news(max_per_source=8, max_hours=1)
         iran_cnt = len(news["이란측"])
         west_cnt = len(news["서방/중립"])
 
@@ -1280,7 +1337,7 @@ async def send_news_report(bot, chat_id: int, user_id: int = None):
         analysis, elapsed = await analyze_iran_news(news, user_id=user_id)
 
         # 저장
-        from datetime import datetime
+        from datetime import datetime, timezone, timedelta
         import os
         ts = datetime.now().strftime("%Y%m%d-%H%M")
         save_dir = "/Users/sykim/workspace/crawled"
@@ -1291,6 +1348,32 @@ async def send_news_report(bot, chat_id: int, user_id: int = None):
             f"### [{a['source']}] {a['title']}\n🕐 {a['pub_str']}\n{a['summary']}\n{a['link']}"
             for side in ["이란측", "서방/중립"] for a in news[side]
         )
+
+        # ── 중복 추적 파일 업데이트 (스케줄 자동실행만 저장, 수동 /news는 저장 안 함) ──
+        seen_file = "/Users/sykim/workspace/crawled/iran-news-seen.json"
+        new_links = [a["link"] for side in ["이란측", "서방/중립"] for a in news[side] if a.get("link")]
+        if new_links and save_seen:
+            now_str = datetime.now(timezone.utc).isoformat()
+            dedup_window = timedelta(hours=1)
+            existing = {}
+            if os.path.exists(seen_file):
+                try:
+                    with open(seen_file, "r", encoding="utf-8") as f:
+                        raw = json.load(f)
+                    existing = raw if isinstance(raw, dict) else {}
+                except Exception:
+                    existing = {}
+            # 1시간 초과 항목 정리 + 신규 추가
+            cutoff_ts = datetime.now(timezone.utc) - dedup_window
+            pruned = {
+                link: ts for link, ts in existing.items()
+                if datetime.fromisoformat(ts) > cutoff_ts
+            }
+            for link in new_links:
+                pruned[link] = now_str
+            with open(seen_file, "w", encoding="utf-8") as f:
+                json.dump(pruned, f, ensure_ascii=False, indent=2)
+
         with open(save_path, "w", encoding="utf-8") as f:
             f.write(f"# 이란 뉴스 교차검증 리포트\n\n")
             f.write(f"- **생성:** {datetime.now().strftime('%Y-%m-%d %H:%M')}\n")
@@ -1298,7 +1381,7 @@ async def send_news_report(bot, chat_id: int, user_id: int = None):
             f.write(f"## 분석 결과\n\n{analysis}\n\n---\n\n## 원문 기사\n\n{raw_articles}\n")
 
         # 전송 (4000자 초과 시 분할)
-        header = f"📰 *이란 뉴스 교차검증 리포트*\n이란측 {iran_cnt}건 · 서방 {west_cnt}건 · {elapsed:.0f}초 _(최근 24시간)_\n\n"
+        header = f"📰 *이란 뉴스 교차검증 리포트*\n이란측 {iran_cnt}건 · 서방 {west_cnt}건 · {elapsed:.0f}초 _(신규만, 중복 제외)_\n\n"
         full = header + analysis
         if len(full) > 4000:
             await bot.send_message(chat_id=chat_id, text=header + analysis[:3800] + "\n_(계속)_", parse_mode="Markdown")
@@ -1325,7 +1408,7 @@ async def cmd_news(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def scheduled_news_report(context):
     """매일 아침 자동 뉴스 리포트"""
-    await send_news_report(context.bot, MASTER_CHAT_ID)
+    await send_news_report(context.bot, MASTER_CHAT_ID, save_seen=True)
 
 
 async def cmd_crawl(update: Update, context: ContextTypes.DEFAULT_TYPE):
