@@ -2108,6 +2108,49 @@ async def wiki_query_endpoint(q: str = "", request: FastAPIRequest = None):
         return {"error": str(e)}
 
 
+@app.post("/wiki/synthesize")
+async def wiki_synthesize_endpoint(request: FastAPIRequest):
+    """
+    Wiki Synthesize API — Prepare synthesis draft from related wiki pages.
+    Does NOT save — returns draft for user confirmation.
+    Body: {"topic": "synthesis topic"}
+    Returns: {"synthesis_id": str, "topic": str, "draft": str, "source_pages": [...], "source_count": int}
+    """
+    body = await request.json()
+    topic = body.get("topic", "").strip()
+    if not topic:
+        return {"error": "topic is required"}
+    try:
+        from wiki_synthesize import prepare_synthesis
+        result = await prepare_synthesis(topic)
+        return result
+    except Exception as e:
+        logger.error(f"wiki synthesize error: {e}")
+        return {"error": str(e)}
+
+
+@app.post("/wiki/synthesize/confirm")
+async def wiki_synthesize_confirm_endpoint(request: FastAPIRequest):
+    """
+    Wiki Synthesize Confirm API — Save the synthesis page after user confirmation.
+    Body: {"topic": str, "draft": str, "source_paths": [str]}
+    Returns: {"status": "saved", "path": str, "title": str, "source_count": int}
+    """
+    body = await request.json()
+    topic = body.get("topic", "").strip()
+    draft = body.get("draft", "").strip()
+    source_paths = body.get("source_paths", [])
+    if not topic or not draft:
+        return {"error": "topic and draft are required"}
+    try:
+        from wiki_synthesize import save_synthesis
+        result = await save_synthesis(topic, draft, source_paths)
+        return result
+    except Exception as e:
+        logger.error(f"wiki synthesize confirm error: {e}")
+        return {"error": str(e)}
+
+
 # ──────────────────────────────────────────────
 # 실행
 # ──────────────────────────────────────────────
