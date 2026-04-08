@@ -45,7 +45,7 @@ async def _search_wiki_db(query: str) -> list[dict]:
                 SELECT title, path, tags, summary
                 FROM wiki_pages
                 WHERE title LIKE ? OR tags LIKE ? OR summary LIKE ?
-                ORDER BY updated_at DESC
+                ORDER BY updated DESC
                 LIMIT 5
             """, (f'%{query}%', f'%{query}%', f'%{query}%'))
 
