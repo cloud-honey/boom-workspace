@@ -32,6 +32,9 @@ MAX_HISTORY_PER_USER = 10
 # 피드백 버튼 상태 관리
 user_feedback_state = {}
 
+# Pending synthesis storage: synthesis_id -> {topic, draft, source_paths, source_pages}
+_pending_syntheses: dict = {}
+
 # 작업 취소 플래그
 _cancel_requested = False
 
@@ -1005,6 +1008,150 @@ async def cmd_query(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await status_msg.edit_text(f"❌ 오류: {e}")
 
 
+async def cmd_synthesize(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    /synthesize [topic] — Synthesize multiple wiki pages into a new page.
+    Shows preview and asks for user confirmation before saving.
+
+    Args:
+        update: Telegram Update object
+        context: Telegram context with args
+    """
+    args = context.args if context.args else []
+    if not args:
+        await update.message.reply_text(
+            "사용법: `/synthesize LLM 활용법`\n"
+            "관련 Wiki 페이지를 합쳐 새 페이지를 만듭니다.",
+            parse_mode='Markdown'
+        )
+        return
+
+    topic = " ".join(args).strip()
+
+    status_msg = await update.message.reply_text(
+        f"⚙️ 합성 준비 중: `{topic}`\n\n관련 Wiki 페이지 검색 + LLM 합성 중... (30-60초 소요)",
+        parse_mode='Markdown'
+    )
+
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                f"{MLX_SERVER_URL}/wiki/synthesize",
+                json={"topic": topic},
+                timeout=aiohttp.ClientTimeout(total=180)
+            ) as resp:
+                data = await resp.json()
+
+        if "error" in data:
+            msg = data.get("message", data["error"])
+            await status_msg.edit_text(f"❌ {msg}", parse_mode='Markdown')
+            return
+
+        synthesis_id = data.get("synthesis_id", "")
+        draft = data.get("draft", "")
+        source_pages = data.get("source_pages", [])
+        source_paths = [p["path"] for p in source_pages]
+        source_count = data.get("source_count", 0)
+
+        # Store pending synthesis
+        _pending_syntheses[synthesis_id] = {
+            "topic": topic,
+            "draft": draft,
+            "source_paths": source_paths,
+            "source_pages": source_pages,
+        }
+
+        # Show preview (truncated to 800 chars to fit Telegram)
+        preview = draft[:800] + ("..." if len(draft) > 800 else "")
+        sources_text = "\n".join(f"• {p['title']}" for p in source_pages[:5])
+
+        preview_text = (
+            f"📝 **합성 미리보기** — `{topic}`\n\n"
+            f"**출처 ({source_count}개):**\n{sources_text}\n\n"
+            f"**초안:**\n```\n{preview}\n```\n\n"
+            f"Wiki에 저장할까요?"
+        )
+
+        keyboard = [
+            [
+                InlineKeyboardButton("✅ 저장", callback_data=f"synth_confirm_{synthesis_id}"),
+                InlineKeyboardButton("❌ 취소", callback_data=f"synth_cancel_{synthesis_id}"),
+            ]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+
+        await status_msg.edit_text(preview_text, parse_mode='Markdown', reply_markup=reply_markup)
+
+    except aiohttp.ClientError as e:
+        await status_msg.edit_text(f"❌ 서버 연결 실패: {e}")
+    except Exception as e:
+        logger.error(f"cmd_synthesize error: {e}")
+        await status_msg.edit_text(f"❌ 오류: {e}")
+
+
+async def handle_synthesize_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Handle inline keyboard callbacks for synthesis confirm/cancel.
+    callback_data format: "synth_confirm_{synthesis_id}" or "synth_cancel_{synthesis_id}"
+
+    Args:
+        update: Telegram Update object
+        context: Telegram context
+    """
+    query = update.callback_query
+    await query.answer()
+
+    data = query.data
+    if not data:
+        return
+
+    if data.startswith("synth_confirm_"):
+        synthesis_id = data[len("synth_confirm_"):]
+        pending = _pending_syntheses.pop(synthesis_id, None)
+
+        if not pending:
+            await query.edit_message_text("❌ 합성 세션이 만료되었습니다. 다시 시도해주세요.")
+            return
+
+        await query.edit_message_text(f"💾 저장 중... `{pending['topic']}`", parse_mode='Markdown')
+
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.post(
+                    f"{MLX_SERVER_URL}/wiki/synthesize/confirm",
+                    json={
+                        "topic": pending["topic"],
+                        "draft": pending["draft"],
+                        "source_paths": pending["source_paths"],
+                    },
+                    timeout=aiohttp.ClientTimeout(total=60)
+                ) as resp:
+                    result = await resp.json()
+
+            if "error" in result:
+                await query.edit_message_text(f"❌ 저장 실패: {result['error']}")
+                return
+
+            path = result.get("path", "")
+            title = result.get("title", pending["topic"])
+            await query.edit_message_text(
+                f"✅ **Wiki 저장 완료!**\n\n"
+                f"제목: {title}\n"
+                f"경로: `{path}`\n"
+                f"출처: {result.get('source_count', 0)}개 페이지",
+                parse_mode='Markdown'
+            )
+
+        except Exception as e:
+            logger.error(f"synthesize confirm error: {e}")
+            await query.edit_message_text(f"❌ 저장 오류: {e}")
+
+    elif data.startswith("synth_cancel_"):
+        synthesis_id = data[len("synth_cancel_"):]
+        _pending_syntheses.pop(synthesis_id, None)
+        await query.edit_message_text("❌ 합성이 취소되었습니다.")
+
+
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_msg = update.message.text
     user_name = update.effective_user.first_name
@@ -1374,11 +1521,13 @@ def main():
     app.add_handler(CommandHandler("h", help_cmd))
     app.add_handler(CommandHandler("ingest", cmd_ingest))
     app.add_handler(CommandHandler("query", cmd_query))
+    app.add_handler(CommandHandler("synthesize", cmd_synthesize))
 
     # 메시지 핸들러
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-    
-    # 콜백 쿼리 핸들러 (피드백 버튼)
+
+    # 콜백 쿼리 핸들러 (피드백 버튼 + 합성 확인)
+    app.add_handler(CallbackQueryHandler(handle_synthesize_callback, pattern="^synth_"))
     app.add_handler(CallbackQueryHandler(handle_feedback_callback))
     
     # "/" 메뉴 등록
@@ -1387,6 +1536,7 @@ def main():
         BotCommand("h", "도움말"),
         BotCommand("ingest", "URL을 Wiki에 저장 [URL]"),
         BotCommand("query", "Wiki 검색 + LLM 답변 [검색어]"),
+        BotCommand("synthesize", "Wiki 페이지 합성 [주제]"),
         BotCommand("transcribe", "나스 폴더 자막 추출 [폴더경로] [모델]"),
         BotCommand("translate", "SRT 파일 한국어 번역 [srt경로]"),
         BotCommand("clean", "SRT 환각 제거 + 검증 [srt경로]"),
