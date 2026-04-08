@@ -665,6 +665,283 @@ async def tool_fetch_url(url: str) -> str:
         return f"Error fetching URL: {e}"
 
 
+# =============================================================================
+# Wiki Database and Search Tools
+# Author: boom-developer
+# Date: 2026-04-08
+# Purpose: SQLite-based wiki page storage and search functionality
+# =============================================================================
+
+import sqlite3
+
+# Wiki configuration constants
+WIKI_DB_PATH = "/Users/sykim/workspace/booml-wiki/wiki.db"
+WIKI_DIR = "/Users/sykim/workspace/booml-wiki"
+
+
+async def wiki_db_init():
+    """
+    Initialize wiki database and create tables if not exists.
+    Creates wiki_pages table with full schema and indexes.
+
+    Returns:
+        None
+    """
+    def _init():
+        try:
+            # Ensure wiki directory exists
+            os.makedirs(os.path.dirname(WIKI_DB_PATH), exist_ok=True)
+
+            conn = sqlite3.connect(WIKI_DB_PATH)
+            cursor = conn.cursor()
+
+            # Create wiki_pages table
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS wiki_pages (
+                    path TEXT PRIMARY KEY,
+                    title TEXT NOT NULL,
+                    tags TEXT NOT NULL DEFAULT '[]',
+                    summary TEXT DEFAULT '',
+                    created TEXT NOT NULL,
+                    updated TEXT NOT NULL,
+                    source_urls TEXT DEFAULT '[]',
+                    source_count INTEGER DEFAULT 0,
+                    has_numbers BOOLEAN DEFAULT FALSE,
+                    key_metrics TEXT DEFAULT '[]',
+                    token_count INTEGER DEFAULT 0,
+                    parent TEXT DEFAULT NULL,
+                    contradiction_flag BOOLEAN DEFAULT FALSE,
+                    verified BOOLEAN DEFAULT FALSE,
+                    page_type TEXT DEFAULT 'topic'
+                )
+            """)
+
+            # Create indexes
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_tags ON wiki_pages(tags)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_updated ON wiki_pages(updated)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_has_numbers ON wiki_pages(has_numbers)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_contradiction ON wiki_pages(contradiction_flag)")
+
+            conn.commit()
+            conn.close()
+
+            logger.info(f"✅ Wiki database initialized: {WIKI_DB_PATH}")
+
+        except Exception as e:
+            logger.error(f"❌ Wiki database initialization failed: {e}")
+
+    await asyncio.to_thread(_init)
+
+
+async def tool_search_wiki_by_tag(tag: str) -> str:
+    """
+    Search wiki pages by tag.
+
+    Args:
+        tag: Tag string to search for (partial match supported)
+
+    Returns:
+        JSON string containing list of matching pages (max 10)
+        Format: [{"path": "...", "title": "...", "summary": "..."}, ...]
+    """
+    def _search():
+        try:
+            conn = sqlite3.connect(WIKI_DB_PATH)
+            cursor = conn.cursor()
+
+            # Search for tag in tags JSON field (using LIKE for simplicity)
+            cursor.execute("""
+                SELECT path, title, summary
+                FROM wiki_pages
+                WHERE tags LIKE ?
+                ORDER BY updated DESC
+                LIMIT 10
+            """, (f'%{tag}%',))
+
+            results = []
+            for row in cursor.fetchall():
+                results.append({
+                    "path": row[0],
+                    "title": row[1],
+                    "summary": row[2] or ""
+                })
+
+            conn.close()
+            return json.dumps(results, ensure_ascii=False)
+
+        except Exception as e:
+            logger.error(f"tool_search_wiki_by_tag failed: {e}")
+            return "[]"
+
+    return await asyncio.to_thread(_search)
+
+
+async def tool_search_wiki_by_keyword(keyword: str) -> str:
+    """
+    Search wiki pages by keyword in title or summary.
+
+    Args:
+        keyword: Keyword to search for (partial match in title/summary)
+
+    Returns:
+        JSON string containing list of matching pages (max 10)
+        Format: [{"path": "...", "title": "...", "summary": "..."}, ...]
+    """
+    def _search():
+        try:
+            conn = sqlite3.connect(WIKI_DB_PATH)
+            cursor = conn.cursor()
+
+            # Search in title or summary
+            cursor.execute("""
+                SELECT path, title, summary
+                FROM wiki_pages
+                WHERE title LIKE ? OR summary LIKE ?
+                ORDER BY updated DESC
+                LIMIT 10
+            """, (f'%{keyword}%', f'%{keyword}%'))
+
+            results = []
+            for row in cursor.fetchall():
+                results.append({
+                    "path": row[0],
+                    "title": row[1],
+                    "summary": row[2] or ""
+                })
+
+            conn.close()
+            return json.dumps(results, ensure_ascii=False)
+
+        except Exception as e:
+            logger.error(f"tool_search_wiki_by_keyword failed: {e}")
+            return "[]"
+
+    return await asyncio.to_thread(_search)
+
+
+async def tool_get_wiki_page(path: str) -> str:
+    """
+    Get wiki page metadata and content.
+
+    Args:
+        path: Full file path to wiki page
+
+    Returns:
+        JSON string containing metadata and content
+        Format: {"metadata": {...}, "content": "..."}
+        On error: {"error": "..."}
+    """
+    def _get():
+        try:
+            # Security check: path must be within wiki directory
+            if not path.startswith(WIKI_DIR):
+                return json.dumps({"error": f"Access denied: path must be within {WIKI_DIR}"})
+
+            # Normalize path to prevent directory traversal
+            normalized_path = os.path.normpath(path)
+            if not normalized_path.startswith(WIKI_DIR):
+                return json.dumps({"error": "Access denied: invalid path"})
+
+            # Get metadata from database
+            conn = sqlite3.connect(WIKI_DB_PATH)
+            cursor = conn.cursor()
+
+            cursor.execute("""
+                SELECT path, title, tags, summary, created, updated,
+                       source_urls, source_count, has_numbers, key_metrics,
+                       token_count, parent, contradiction_flag, verified, page_type
+                FROM wiki_pages
+                WHERE path = ?
+            """, (path,))
+
+            row = cursor.fetchone()
+            conn.close()
+
+            if not row:
+                return json.dumps({"error": "Page not found in database"})
+
+            # Build metadata object
+            metadata = {
+                "path": row[0],
+                "title": row[1],
+                "tags": json.loads(row[2]) if row[2] else [],
+                "summary": row[3] or "",
+                "created": row[4],
+                "updated": row[5],
+                "source_urls": json.loads(row[6]) if row[6] else [],
+                "source_count": row[7],
+                "has_numbers": bool(row[8]),
+                "key_metrics": json.loads(row[9]) if row[9] else [],
+                "token_count": row[10],
+                "parent": row[11],
+                "contradiction_flag": bool(row[12]),
+                "verified": bool(row[13]),
+                "page_type": row[14]
+            }
+
+            # Read file content
+            content = ""
+            if os.path.exists(path):
+                with open(path, 'r', encoding='utf-8') as f:
+                    content = f.read()
+            else:
+                return json.dumps({"error": f"File not found: {path}"})
+
+            return json.dumps({
+                "metadata": metadata,
+                "content": content
+            }, ensure_ascii=False)
+
+        except Exception as e:
+            logger.error(f"tool_get_wiki_page failed: {e}")
+            return json.dumps({"error": str(e)})
+
+    return await asyncio.to_thread(_get)
+
+
+async def tool_check_wiki_url(url: str) -> str:
+    """
+    Check if URL exists in any wiki page's source_urls.
+
+    Args:
+        url: URL string to check
+
+    Returns:
+        JSON string: {"exists": true/false, "path": "...", "updated": "..."}
+        On error: {"exists": false, "error": "..."}
+    """
+    def _check():
+        try:
+            conn = sqlite3.connect(WIKI_DB_PATH)
+            cursor = conn.cursor()
+
+            # Search for URL in source_urls field
+            cursor.execute("""
+                SELECT path, updated
+                FROM wiki_pages
+                WHERE source_urls LIKE ?
+                LIMIT 1
+            """, (f'%{url}%',))
+
+            row = cursor.fetchone()
+            conn.close()
+
+            if row:
+                return json.dumps({
+                    "exists": True,
+                    "path": row[0],
+                    "updated": row[1]
+                }, ensure_ascii=False)
+            else:
+                return json.dumps({"exists": False})
+
+        except Exception as e:
+            logger.error(f"tool_check_wiki_url failed: {e}")
+            return json.dumps({"exists": False, "error": str(e)})
+
+    return await asyncio.to_thread(_check)
+
+
 async def get_realtime_data(user_message: str = None) -> str:
     """실시간 데이터 수집 (주식, 날씨, 뉴스) + 웹 검색"""
     try:
@@ -865,10 +1142,14 @@ async def lifespan(app: FastAPI):
     # 아키텍처 모듈 초기화
     if ARCHITECTURE_ENABLED:
         logger.info("붐엘 아키텍처 초기화 완료")
-    
+
+    # Wiki 데이터베이스 초기화
+    logger.info("Wiki 데이터베이스 초기화 중...")
+    await wiki_db_init()
+
     app.state.start_time = start_time
     yield
-    
+
     logger.info("붐엘 v3 서버 종료...")
 
 
@@ -978,6 +1259,10 @@ async def chat_completion(request: ChatCompletionRequest) -> ChatCompletionRespo
                 "memory_read": lambda args: tool_memory_read(args.get("path", "today")),
                 "memory_write": lambda args: tool_memory_write(args.get("content", ""), args.get("path", None)),
                 "fetch_url": lambda args: tool_fetch_url(args.get("url", "")),
+                "search_wiki_by_tag": lambda args: tool_search_wiki_by_tag(args.get("tag", "")),
+                "search_wiki_by_keyword": lambda args: tool_search_wiki_by_keyword(args.get("keyword", "")),
+                "get_wiki_page": lambda args: tool_get_wiki_page(args.get("path", "")),
+                "check_wiki_url": lambda args: tool_check_wiki_url(args.get("url", "")),
             }
 
             # 최대 5회 tool call 루프 (무한 루프 방지)
