@@ -4,7 +4,7 @@ module.exports = {
       name: 'booml-mlx-server',
       script: 'server_v3_postgres_router.py',
       interpreter: 'python3',
-      cwd: '/Users/sykim/.openclaw/workspace/booml-mlx',
+      cwd: '/Users/sykim/workspace/boom-workspace/booml-mlx',
       env: {
         PORT: '8000',
         BOOML_DB_BACKEND: 'postgresql',
@@ -15,7 +15,7 @@ module.exports = {
       name: 'booml-mlx-chat',
       script: 'server_v3_postgres_router.py',
       interpreter: 'python3',
-      cwd: '/Users/sykim/.openclaw/workspace/booml-mlx',
+      cwd: '/Users/sykim/workspace/boom-workspace/booml-mlx',
       env: {
         PORT: '8001',
         BOOML_DB_BACKEND: 'postgresql',

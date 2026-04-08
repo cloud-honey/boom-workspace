@@ -1,6 +1,6 @@
 import json, time, urllib.request, statistics, os, subprocess, signal
 from pathlib import Path
-ROOT = Path('/Users/sykim/.openclaw/workspace/booml-mlx')
+ROOT = Path('/Users/sykim/workspace/boom-workspace/booml-mlx')
 TEST = ROOT / 'server_v3_postgres_router_bench.py'
 LOG = ROOT / 'bench_server_extended.log'
 URL = 'http://127.0.0.1:8003/v1/chat/completions'

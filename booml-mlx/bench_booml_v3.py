@@ -1,7 +1,7 @@
 import json, time, urllib.request, statistics, os, subprocess, signal
 from pathlib import Path
 
-ROOT = Path('/Users/sykim/.openclaw/workspace/booml-mlx')
+ROOT = Path('/Users/sykim/workspace/boom-workspace/booml-mlx')
 SRC = ROOT / 'server_v3_postgres_router.py'
 TEST = ROOT / 'server_v3_postgres_router_bench.py'
 LOG = ROOT / 'bench_server.log'
