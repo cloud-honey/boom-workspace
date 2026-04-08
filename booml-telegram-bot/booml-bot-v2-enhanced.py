@@ -930,6 +930,73 @@ async def cmd_ingest(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await status_msg.edit_text(f"오류 발생: {str(e)[:200]}")
 
 
+async def cmd_query(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    /query [검색어] — 붐엘 Wiki에서 키워드 검색 후 LLM 답변 반환.
+
+    Args:
+        update: Telegram Update object
+        context: Telegram context with args
+    """
+    args = context.args if context.args else []
+    if not args:
+        await update.message.reply_text(
+            "사용법: `/query LLM이란`\n"
+            "붐엘 Wiki에서 관련 내용을 찾아 답변합니다.",
+            parse_mode='Markdown'
+        )
+        return
+
+    query = " ".join(args).strip()
+
+    status_msg = await update.message.reply_text(
+        f"🔍 Wiki 검색 중: `{query}`",
+        parse_mode='Markdown'
+    )
+
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(
+                f"{MLX_SERVER_URL}/wiki/query",
+                params={"q": query},
+                timeout=aiohttp.ClientTimeout(total=180)
+            ) as resp:
+                data = await resp.json()
+
+        if "error" in data:
+            await status_msg.edit_text(
+                f"❌ 검색 실패: `{data['error']}`",
+                parse_mode='Markdown'
+            )
+            return
+
+        answer = data.get("answer", "답변을 생성하지 못했습니다.")
+        sources = data.get("sources", [])
+        wiki_found = data.get("wiki_found", False)
+        fallback_suggested = data.get("fallback_suggested", False)
+
+        # Build response message
+        if wiki_found:
+            sources_text = ""
+            if sources:
+                sources_text = "\n\n📚 **출처:**\n" + "\n".join(
+                    f"• {s.get('title', '?')}" for s in sources[:3]
+                )
+            response_text = f"**Wiki 답변:**\n\n{answer}{sources_text}"
+        else:
+            response_text = answer
+            if fallback_suggested:
+                response_text += "\n\n💡 웹 검색을 원하시면 `/ingest [URL]`로 먼저 수집하거나 일반 채팅으로 질문해주세요."
+
+        await status_msg.edit_text(response_text, parse_mode='Markdown')
+
+    except aiohttp.ClientError as e:
+        await status_msg.edit_text(f"❌ 서버 연결 실패: {e}")
+    except Exception as e:
+        logger.error(f"cmd_query error: {e}")
+        await status_msg.edit_text(f"❌ 오류: {e}")
+
+
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_msg = update.message.text
     user_name = update.effective_user.first_name
@@ -1298,6 +1365,7 @@ def main():
     app.add_handler(CommandHandler("cancel", cancel_task))
     app.add_handler(CommandHandler("h", help_cmd))
     app.add_handler(CommandHandler("ingest", cmd_ingest))
+    app.add_handler(CommandHandler("query", cmd_query))
 
     # 메시지 핸들러
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
@@ -1310,6 +1378,7 @@ def main():
     commands = [
         BotCommand("h", "도움말"),
         BotCommand("ingest", "URL을 Wiki에 저장 [URL]"),
+        BotCommand("query", "Wiki 검색 + LLM 답변 [검색어]"),
         BotCommand("transcribe", "나스 폴더 자막 추출 [폴더경로] [모델]"),
         BotCommand("translate", "SRT 파일 한국어 번역 [srt경로]"),
         BotCommand("clean", "SRT 환각 제거 + 검증 [srt경로]"),

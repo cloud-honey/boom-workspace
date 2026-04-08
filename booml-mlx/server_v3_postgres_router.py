@@ -2082,6 +2082,32 @@ async def wiki_ingest_endpoint(request: FastAPIRequest):
         return {"error": str(e)}
 
 
+@app.get("/wiki/query")
+async def wiki_query_endpoint(q: str = "", request: FastAPIRequest = None):
+    """
+    Wiki Query API — 키워드로 wiki 검색 후 LLM 합성 답변 반환.
+
+    GET /wiki/query?q=LLM이란
+
+    Returns:
+        dict: {
+            "answer": str,
+            "sources": list[dict],
+            "wiki_found": bool,
+            "fallback_suggested": bool
+        }
+    """
+    if not q.strip():
+        return {"error": "q (query) parameter is required"}
+    try:
+        from wiki_query import query_wiki
+        result = await query_wiki(q.strip())
+        return result
+    except Exception as e:
+        logger.error(f"wiki query error: {e}")
+        return {"error": str(e)}
+
+
 # ──────────────────────────────────────────────
 # 실행
 # ──────────────────────────────────────────────
