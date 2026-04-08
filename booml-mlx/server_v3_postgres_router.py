@@ -654,7 +654,7 @@ async def tool_fetch_url(url: str) -> str:
             result += f"[Title] {title}\n"
         if description:
             result += f"[Description] {description}\n"
-        result += f"\n[Content Preview]\n{text[:3000]}"
+        result += f"\n[Content Preview]\n{text[:15000]}"
 
         return result
 
