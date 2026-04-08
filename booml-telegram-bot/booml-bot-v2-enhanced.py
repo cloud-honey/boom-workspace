@@ -973,16 +973,24 @@ async def cmd_query(update: Update, context: ContextTypes.DEFAULT_TYPE):
         answer = data.get("answer", "답변을 생성하지 못했습니다.")
         sources = data.get("sources", [])
         wiki_found = data.get("wiki_found", False)
+        web_searched = data.get("web_searched", False)
         fallback_suggested = data.get("fallback_suggested", False)
 
         # Build response message
         if wiki_found:
             sources_text = ""
             if sources:
-                sources_text = "\n\n📚 **출처:**\n" + "\n".join(
+                sources_text = "\n\n📚 **출처 (Wiki):**\n" + "\n".join(
                     f"• {s.get('title', '?')}" for s in sources[:3]
                 )
             response_text = f"**Wiki 답변:**\n\n{answer}{sources_text}"
+        elif web_searched:
+            sources_text = ""
+            if sources:
+                sources_text = "\n\n🌐 **출처 (웹):**\n" + "\n".join(
+                    f"• {s.get('title', '?')}" for s in sources[:3]
+                )
+            response_text = f"**웹 검색 답변:**\n\n{answer}{sources_text}"
         else:
             response_text = answer
             if fallback_suggested:

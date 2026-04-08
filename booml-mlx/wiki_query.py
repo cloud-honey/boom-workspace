@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Optional
 
 import aiohttp
+from duckduckgo_search import DDGS
 
 logger = logging.getLogger(__name__)
 
@@ -160,6 +161,98 @@ async def _call_llm_with_retry(query: str, page_contents: str, max_retries: int 
     raise Exception(f"LLM call failed after {max_retries + 1} attempts: {last_error}")
 
 
+async def _web_search_fallback(query: str) -> dict:
+    """
+    DuckDuckGo web search fallback when wiki has no results.
+
+    Args:
+        query: Search query string
+
+    Returns:
+        Dict with answer, sources, wiki_found=False, web_searched=True
+    """
+    try:
+        logger.info(f"Web search fallback for query: '{query}'")
+
+        # DuckDuckGo search (run in thread to avoid blocking)
+        def _ddg_search():
+            results = list(DDGS().text(query, max_results=5))
+            return results
+
+        results = await asyncio.to_thread(_ddg_search)
+
+        if not results:
+            return {
+                "answer": "웹 검색 결과도 찾을 수 없습니다.",
+                "sources": [],
+                "wiki_found": False,
+                "web_searched": True,
+                "fallback_suggested": False
+            }
+
+        # Build context for LLM
+        search_snippets = []
+        sources = []
+        for i, r in enumerate(results[:5]):
+            title = r.get("title", "").strip()
+            body = r.get("body", "").strip()
+            url = r.get("href", "")
+            if body:
+                search_snippets.append(f"{i+1}. [{title}]\n{body[:500]}")
+                sources.append({"title": title, "url": url, "summary": body[:150]})
+
+        search_context = "[웹 검색 결과]\n" + "\n\n".join(search_snippets)
+
+        # LLM synthesize from web results
+        system_prompt = (
+            "You are a helpful assistant. Summarize and answer the user's question "
+            "based on the provided web search results. Be concise and accurate. "
+            "Answer in Korean."
+        )
+        user_prompt = f"Question: {query}\n\n{search_context}"
+
+        request_body = {
+            "model": LLM_MODEL,
+            "messages": [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt}
+            ],
+            "max_tokens": 1024,
+            "temperature": 0.7
+        }
+
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                f"{LLM_BASE_URL}/v1/chat/completions",
+                json=request_body,
+                timeout=aiohttp.ClientTimeout(total=120)
+            ) as resp:
+                data = await resp.json()
+                answer = data.get("choices", [{}])[0].get("message", {}).get("content", "")
+
+        if not answer:
+            answer = search_context  # raw results fallback
+
+        return {
+            "answer": answer,
+            "sources": sources,
+            "wiki_found": False,
+            "web_searched": True,
+            "fallback_suggested": False
+        }
+
+    except Exception as e:
+        logger.error(f"Web search fallback failed: {e}")
+        return {
+            "answer": f"웹 검색 실패: {e}",
+            "sources": [],
+            "wiki_found": False,
+            "web_searched": True,
+            "fallback_suggested": False,
+            "error": str(e)
+        }
+
+
 async def query_wiki(query: str) -> dict:
     """
     Main wiki query function: search wiki DB, load pages, and synthesize LLM answer.
@@ -181,13 +274,8 @@ async def query_wiki(query: str) -> dict:
         search_results = await _search_wiki_db(query)
 
         if not search_results:
-            logger.info("No wiki pages found for query")
-            return {
-                "answer": "Wiki에 관련 내용이 없습니다. 웹 검색을 사용하시겠습니까?",
-                "sources": [],
-                "wiki_found": False,
-                "fallback_suggested": True
-            }
+            logger.info("No wiki pages found — falling back to web search")
+            return await _web_search_fallback(query)
 
         # Step 2: Load page content (limit to 3 pages to avoid context overflow)
         logger.info(f"Found {len(search_results)} wiki pages, loading content...")
@@ -209,13 +297,8 @@ async def query_wiki(query: str) -> dict:
                 })
 
         if not page_contents_list:
-            logger.warning("Wiki pages found in DB but no content could be loaded")
-            return {
-                "answer": "Wiki 페이지를 찾았으나 내용을 읽을 수 없습니다.",
-                "sources": [],
-                "wiki_found": False,
-                "fallback_suggested": True
-            }
+            logger.warning("Wiki pages found in DB but no content could be loaded — falling back to web search")
+            return await _web_search_fallback(query)
 
         # Step 3: Call LLM to synthesize answer
         logger.info(f"Calling LLM with {len(page_contents_list)} pages...")
