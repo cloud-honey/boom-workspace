@@ -433,7 +433,7 @@ async def safe_wiki_write(page_path, content, db_entry):
 
 ---
 
-## 명령어 구성 (v4)
+## 명령어 구성 (v6)
 
 | 명령 | 동작 | Phase |
 |------|------|-------|
@@ -445,7 +445,7 @@ async def safe_wiki_write(page_path, content, db_entry):
 | /lint --repair | 누락 DB entry 재등록 | P4 |
 | /wiki | recent pages + log 요약 | P2 |
 | /wiki-stat | page count, orphan, stale, synthesis 통계, 전환 트리거 상태 | P2 |
-| /wiki-verify [page] | synthesis page를 정식 지식으로 컨펌 (verified=TRUE) | P3b |
+| /wiki-verify [page] | synthesis page를 정식 지식으로 컨펌 — batch ingest 도입 후 (MVP 제외) | P3b+ |
 
 ---
 
@@ -491,7 +491,22 @@ merge, 파일 락, synthesis, /lint, Change Log → Day 3+ 이후
 
 ---
 
-## 붐엘 현행 아키텍처 현황
+## 붐엘 현행 아키텍처 현황 (2026-04-08 실측)
+
+> 소스코드 직접 확인 기준. 추정/기억 기반 아님.
+
+### 구동 상태
+
+| 항목 | 상태 |
+|------|------|
+| 붐엘 서버 (포트 8000) | ✅ 실행 중 (업타임 ~20h) |
+| 붐엘2 서버 (포트 8001) | ✅ 실행 중 |
+| booml-bot-v2-enhanced | ✅ 실행 중 |
+| booml-bot-v2-chat | ✅ 실행 중 |
+| 모델 | Gemma 4 26B A4B MoE 4bit (mlx) |
+| TurboQuant KV 캐시 | 3.5bit |
+| DB 백엔드 (실제) | SQLite (폴백) |
+| 아키텍처 모듈 | ARCHITECTURE_ENABLED = True |
 
 ### 이미 구현된 모듈
 
@@ -500,31 +515,70 @@ merge, 파일 락, synthesis, /lint, Change Log → Day 3+ 이후
 | Memory Store (SQLite) | 완전 구현 | memory_store.py (755줄) |
 | Policy Engine | PreferenceSlot 시스템 | policy_engine.py (291줄) |
 | Prompt Composer | 슬롯 조립형 프롬프트 | prompt_composer.py (253줄) |
-| Model Adapter | 모델 라우팅 + 핫스위칭 | model_router.py (615줄) |
+| Model Adapter | 모델 라우팅 + 핫스위칭 + TurboQuant | model_router.py (615줄) |
 | KPI Logger | KPI 수집 시스템 | kpi_logger.py (317줄) |
 | BoomL Core | 전체 통합 진입점 | booml_core.py (304줄) |
-| Tool Calling | 10개 툴 내장 | server_v3 내장 |
-| Realtime Data | 주식/날씨/뉴스/검색 | server_v3 내장 |
-| Token Dashboard | 토큰 사용량 자동 수집 | dashboard:8080/api/log |
+| Repository Factory | PostgreSQL/SQLite 자동 선택 | repository_factory.py |
+| PostgreSQL Repository | 코드 완성 (psycopg2 미설치로 미활성) | postgres_repository.py (27KB) |
+| Token Dashboard 연동 | 응답 완료 시 fire-and-forget POST | server_v3 내장 |
 
-### 미구현 (v4 기준)
+### Tool Calling 현황 (실측 — 서버 코드 기준)
+
+| 툴 이름 | 함수 | 설명 | 보안 제한 |
+|---------|------|------|---------|
+| web_search | web_search() | DuckDuckGo 검색 | — |
+| read_file | tool_read_file() | 파일 읽기 | /Users/sykim/ 하위만 |
+| write_file | tool_write_file() | 파일 쓰기/생성 | /Users/sykim/ 하위만 |
+| list_dir | tool_list_dir() | 디렉토리 목록 | /Users/sykim/ 하위만 |
+| get_weather | tool_get_weather() | wttr.in 3일 예보 | — |
+| exec | tool_exec() | 셸 명령 실행 | ls/cat/grep/find/pwd/date/echo/head/tail/wc만 허용 |
+| memory_read | tool_memory_read() | 붐엘 메모리 파일 읽기 | — |
+| memory_write | tool_memory_write() | 붐엘 메모리 파일 쓰기 | — |
+| fetch_url | tool_fetch_url() | URL 수집 (HTML→텍스트) | ⚠️ 3,000자 제한 (L657 즉시 수정 필요) |
+
+- **tool calling 루프:** 최대 5회 (무한루프 방지, L984)
+- **시스템프롬프트 자동 주입:** tools 제공 시 Few-shot 포함 tool 사용 유도 프롬프트 자동 삽입
+
+### PostgreSQL 실제 현황 (소스 확인)
+
+| 항목 | 상태 |
+|------|------|
+| PostgreSQL 프로세스 | ✅ 실행 중 (localhost:5432) |
+| booml DB | ✅ 존재 (6개 테이블 완성) |
+| postgres_repository.py | ✅ 코드 완전 구현 |
+| psycopg2 (venv) | ❌ 미설치 |
+| repository_factory.py L197 | ❌ `os.environ["BOOML_DB_BACKEND"] = "sqlite"` 하드코딩 |
+| ecosystem.config.js | ❌ BOOML_DB_BACKEND env 없음 |
+
+**PostgreSQL 활성화 3단계** (마이그레이션 불필요 — 이미 준비됨):
+```bash
+# 1. psycopg2 설치
+/Users/sykim/.openclaw/workspace/booml-mlx/venv/bin/pip install psycopg2-binary
+
+# 2. repository_factory.py L197 제거
+# os.environ["BOOML_DB_BACKEND"] = "sqlite"  ← 이 줄 삭제
+
+# 3. ecosystem.config.js env 추가
+# env: { PORT: '8000', BOOML_DB_BACKEND: 'postgresql' }
+```
+
+### 미구현 (wiki pipeline 기준)
 
 | 항목 | 우선순위 |
 |------|---------|
-| Wiki 디렉토리 + _schema + index.md + log.md | P0 |
-| current_context.md (경량 색인, 최근 20페이지) | P0 |
-| SQLite wiki_pages 테이블 (verified 컬럼 포함) | P1 |
-| wiki 전용 툴 4개 (search_by_tag/keyword, get_page, check_url) | P1 |
-| wiki_ingest.py glue 코드 (~50줄) | P1 |
+| fetch_url 3,000→15,000자 상향 (L657) | **즉시** |
+| Wiki 디렉토리 + _schema.md + index.md + log.md | P0 |
+| wiki.db + wiki_pages 테이블 (verified 컬럼 포함) | P1 |
+| wiki 전용 툴 4개 (search_by_tag, search_by_keyword, get_page, check_url) | P1 |
+| wiki_ingest.py glue 코드 (JSON 스키마 + 파싱 재시도) | P1 |
+| /test_ingest 텔레그램 명령 | P1 |
 | /ingest 명령 (atomicity + filelock) | P2 |
-| current_context.md 자동 갱신 로직 | P2 |
 | /query read-only + fallback | P3a |
-| /synthesize 사용자 확인 저장 (verified=false 기본) | P3b |
-| /wiki-verify (정식 지식 편입, verified=TRUE) | P3b |
+| /synthesize 사용자 확인 저장 | P3b |
 | /lint DB 기반 O(N) | P4 |
-| /wiki-stat 전환 트리거 경고 (1,000페이지 초과) | P4 |
+| /wiki-stat 전환 트리거 경고 (1,000페이지) | P4 |
 | page split (token_count > 800) | P4 |
-| PostgreSQL 마이그레이션 | P5 |
+| PostgreSQL 활성화 (3단계) | P5 |
 | pgvector 검색 | P6 장기 |
 
 ---
@@ -573,3 +627,4 @@ merge, 파일 락, synthesis, /lint, Change Log → Day 3+ 이후
 | v4 | DeepSeek | P1 glue 코드 방식으로 변경, SQLite P1 즉시 도입, wiki 전용 툴, 파일 락, synthesis 사용자 확인, 재수집 merge, query fallback |
 | v5 | Gemini | current_context.md 경량 색인, verified 플래그 + /wiki-verify 환각 격리, index 전환 트리거 기준 명시 |
 | v6 | Opus | current_context.md 제거(충돌), verified 이중 확인 제거, fetch_url 3,000→15,000자, LLM 응답 JSON 스키마 명세, index.md=파생뷰, wiki.db=단일 진실 소스, MVP 범위 P0+P1+P3a로 축소 |
+| v6.1 | 붐코 (소스 실측) | 툴 9개 실측 확인 (exec 보안제한/memory_read·write 추가), tool loop max 5회, PostgreSQL 실행 중+DB 준비됨 확인, P5 마이그레이션→활성화 3단계로 수정, fetch_url L657 즉시 수정 항목 추가 |
