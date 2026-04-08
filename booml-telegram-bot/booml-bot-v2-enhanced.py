@@ -1152,6 +1152,68 @@ async def handle_synthesize_callback(update: Update, context: ContextTypes.DEFAU
         await query.edit_message_text("❌ 합성이 취소되었습니다.")
 
 
+async def cmd_lint(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    /lint — Run wiki quality checks and report results.
+
+    Checks orphan pages, stale pages (30+ days), and contradiction-flagged pages.
+    Reports results with counts and page titles.
+    """
+    status_msg = await update.message.reply_text("🔍 Wiki 품질 검사 중...")
+
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(
+                f"{MLX_SERVER_URL}/wiki/lint",
+                timeout=aiohttp.ClientTimeout(total=30)
+            ) as resp:
+                data = await resp.json()
+
+        if "error" in data:
+            await status_msg.edit_text(f"❌ Lint 실패: {data['error']}")
+            return
+
+        total = data.get("total_pages", 0)
+        orphans = data.get("orphans", [])
+        stale = data.get("stale", [])
+        contradictions = data.get("contradictions", [])
+        clean = data.get("clean", False)
+
+        lines = [f"📋 **Wiki Lint 결과** (총 {total}개 페이지)\n"]
+
+        if clean:
+            lines.append("✅ 모든 페이지 정상입니다!")
+        else:
+            if orphans:
+                lines.append(f"\n⚠️ **고아 페이지** ({len(orphans)}개) — 출처 없음:")
+                for p in orphans[:5]:
+                    lines.append(f"  • {p['title']}")
+                if len(orphans) > 5:
+                    lines.append(f"  ... 외 {len(orphans)-5}개")
+            if stale:
+                lines.append(f"\n🕐 **오래된 페이지** ({len(stale)}개) — 30일 이상 미갱신:")
+                for p in stale[:5]:
+                    updated = p['updated'][:10] if p.get('updated') else '?'
+                    lines.append(f"  • {p['title']} ({updated})")
+                if len(stale) > 5:
+                    lines.append(f"  ... 외 {len(stale)-5}개")
+            if contradictions:
+                lines.append(f"\n❗ **모순 페이지** ({len(contradictions)}개):")
+                for p in contradictions[:5]:
+                    lines.append(f"  • {p['title']}")
+                if len(contradictions) > 5:
+                    lines.append(f"  ... 외 {len(contradictions)-5}개")
+            lines.append("\n💡 `/ingest [URL]`로 페이지를 갱신하거나 재수집하세요.")
+
+        await status_msg.edit_text("\n".join(lines), parse_mode='Markdown')
+
+    except aiohttp.ClientError as e:
+        await status_msg.edit_text(f"❌ 서버 연결 실패: {e}")
+    except Exception as e:
+        logger.error(f"cmd_lint error: {e}")
+        await status_msg.edit_text(f"❌ 오류: {e}")
+
+
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_msg = update.message.text
     user_name = update.effective_user.first_name
@@ -1522,6 +1584,7 @@ def main():
     app.add_handler(CommandHandler("ingest", cmd_ingest))
     app.add_handler(CommandHandler("query", cmd_query))
     app.add_handler(CommandHandler("synthesize", cmd_synthesize))
+    app.add_handler(CommandHandler("lint", cmd_lint))
 
     # 메시지 핸들러
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
@@ -1537,6 +1600,7 @@ def main():
         BotCommand("ingest", "URL을 Wiki에 저장 [URL]"),
         BotCommand("query", "Wiki 검색 + LLM 답변 [검색어]"),
         BotCommand("synthesize", "Wiki 페이지 합성 [주제]"),
+        BotCommand("lint", "Wiki 품질 검사"),
         BotCommand("transcribe", "나스 폴더 자막 추출 [폴더경로] [모델]"),
         BotCommand("translate", "SRT 파일 한국어 번역 [srt경로]"),
         BotCommand("clean", "SRT 환각 제거 + 검증 [srt경로]"),

@@ -2151,6 +2151,99 @@ async def wiki_synthesize_confirm_endpoint(request: FastAPIRequest):
         return {"error": str(e)}
 
 
+@app.get("/wiki/lint")
+async def wiki_lint_endpoint():
+    """
+    Wiki Lint API — Run quality checks on wiki pages using O(N) DB queries.
+
+    Checks:
+        1. Orphan pages: source_count = 0 AND source_urls = '[]'
+        2. Stale pages: updated older than 30 days
+        3. Contradiction pages: contradiction_flag = TRUE
+
+    Returns:
+        Dict with {
+            total_pages: int,
+            orphans: list[dict],
+            stale: list[dict],
+            contradictions: list[dict],
+            clean: bool
+        }
+    """
+    import sqlite3
+    from datetime import datetime, timezone, timedelta
+
+    WIKI_DB_PATH = "/Users/sykim/workspace/booml-wiki/wiki.db"
+    KST = timezone(timedelta(hours=9))
+
+    def _run_lint():
+        """Run all lint checks in a single DB connection."""
+        try:
+            conn = sqlite3.connect(WIKI_DB_PATH)
+            cursor = conn.cursor()
+
+            # Total pages count
+            cursor.execute("SELECT COUNT(*) FROM wiki_pages")
+            total = cursor.fetchone()[0]
+
+            # Check 1: Orphan pages (no source URLs and source_count = 0)
+            cursor.execute("""
+                SELECT path, title, updated, page_type
+                FROM wiki_pages
+                WHERE source_count = 0 AND (source_urls = '[]' OR source_urls IS NULL OR source_urls = '')
+                ORDER BY updated DESC
+            """)
+            orphans = [
+                {"path": r[0], "title": r[1], "updated": r[2], "page_type": r[3]}
+                for r in cursor.fetchall()
+            ]
+
+            # Check 2: Stale pages (not updated in 30+ days)
+            cutoff = (datetime.now(KST) - timedelta(days=30)).isoformat()
+            cursor.execute("""
+                SELECT path, title, updated, page_type
+                FROM wiki_pages
+                WHERE updated < ?
+                ORDER BY updated ASC
+            """, (cutoff,))
+            stale = [
+                {"path": r[0], "title": r[1], "updated": r[2], "page_type": r[3]}
+                for r in cursor.fetchall()
+            ]
+
+            # Check 3: Contradiction pages (contradiction_flag = TRUE)
+            cursor.execute("""
+                SELECT path, title, updated, page_type
+                FROM wiki_pages
+                WHERE contradiction_flag = TRUE
+                ORDER BY updated DESC
+            """)
+            contradictions = [
+                {"path": r[0], "title": r[1], "updated": r[2], "page_type": r[3]}
+                for r in cursor.fetchall()
+            ]
+
+            conn.close()
+            return {
+                "total_pages": total,
+                "orphans": orphans,
+                "stale": stale,
+                "contradictions": contradictions,
+                "clean": len(orphans) == 0 and len(stale) == 0 and len(contradictions) == 0
+            }
+
+        except Exception as e:
+            logger.error(f"Wiki lint DB error: {e}")
+            return {"error": str(e)}
+
+    try:
+        result = await asyncio.to_thread(_run_lint)
+        return result
+    except Exception as e:
+        logger.error(f"Wiki lint error: {e}")
+        return {"error": str(e)}
+
+
 # ──────────────────────────────────────────────
 # 실행
 # ──────────────────────────────────────────────
