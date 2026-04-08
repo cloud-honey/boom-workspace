@@ -237,6 +237,81 @@ BOOML_TOOLS = [
                 "required": ["city"]
             }
         }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "exec",
+            "description": "Execute allowed shell commands on the system. Only safe read-only commands are allowed (ls, cat, grep, find, cd, pwd, date, echo, head, tail, wc, git, npm, etc.). No destructive commands.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "command": {
+                        "type": "string",
+                        "description": "Shell command to execute"
+                    },
+                    "working_dir": {
+                        "type": "string",
+                        "description": "Working directory for the command (default: /Users/sykim)"
+                    }
+                },
+                "required": ["command"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "memory_read",
+            "description": "Read Boom's memory files (daily logs). Use 'today' for today's memory, 'yesterday', 'week' for recent 7 days, 'all' for all memory, or specify a date like '2026-04-07'",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "path": {
+                        "type": "string",
+                        "description": "Memory path: 'today', 'yesterday', 'week', 'all', or specific date 'YYYY-MM-DD'"
+                    }
+                }
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "memory_write",
+            "description": "Write content to Boom's memory file. Automatically appends with timestamp. Use this to save important information, decisions, or notes.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "content": {
+                        "type": "string",
+                        "description": "Content to save to memory"
+                    },
+                    "path": {
+                        "type": "string",
+                        "description": "Optional path override (default: today's memory file)"
+                    }
+                },
+                "required": ["content"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "fetch_url",
+            "description": "Fetch and extract readable content from a URL (HTML to text conversion). Returns title, description, and content preview.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "url": {
+                        "type": "string",
+                        "description": "HTTP or HTTPS URL to fetch"
+                    }
+                },
+                "required": ["url"]
+            }
+        }
     }
 ]
 
@@ -1524,96 +1599,129 @@ async def analyze_iran_news(news: dict, user_id: int = None) -> str:
     return response, elapsed
 
 
-async def send_news_report(bot, chat_id: int, user_id: int = None, save_seen: bool = False):
-    """뉴스 수집 + 분석 + 전송 (봇 객체 직접 사용)"""
-    try:
-        await bot.send_message(chat_id=chat_id, text="📡 이란 뉴스 수집 중...")
-        news = await fetch_iran_news(max_per_source=8, max_hours=1)
-        iran_cnt = len(news["이란측"])
-        west_cnt = len(news["서방/중립"])
+XPS_IRAN_API = "http://100.116.65.86:3004/api/iran-news/latest"
 
-        if iran_cnt + west_cnt == 0:
-            await bot.send_message(chat_id=chat_id, text="❌ 뉴스를 가져올 수 없습니다.")
+
+async def fetch_iran_news_xps() -> dict:
+    """XPS API에서 이란 뉴스 가져오기"""
+    import aiohttp
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(XPS_IRAN_API, timeout=aiohttp.ClientTimeout(total=30)) as resp:
+                if resp.status == 200:
+                    return await resp.json()
+                elif resp.status == 404:
+                    return None
+                else:
+                    logger.warning(f"XPS API 응답 오류: {resp.status}")
+                    return None
+    except Exception as e:
+        logger.error(f"XPS 뉴스 수집 실패: {e}")
+        return None
+
+
+async def send_iran_news_report(bot, chat_id: int, user_id: int = None):
+    """XPS API 기반 이란 뉴스 리포트 — 스펙 형식"""
+    try:
+        await bot.send_message(chat_id=chat_id, text="📡 이란 뉴스 수집 중 (XPS)...")
+        news_data = await fetch_iran_news_xps()
+
+        if not news_data:
+            await bot.send_message(chat_id=chat_id, text="❌ 뉴스를 가져올 수 없습니다 (XPS API 응답 없음)")
             return
 
-        await bot.send_message(chat_id=chat_id,
-            text=f"✅ 수집 완료 (이란측 {iran_cnt}건 · 서방 {west_cnt}건)\n🤖 교차검증 분석 중...")
+        articles = news_data.get("articles", [])
+        metadata = news_data.get("metadata", {})
+        collected_at = metadata.get("collectedAt", "")
 
-        analysis, elapsed = await analyze_iran_news(news, user_id=user_id)
+        if not articles:
+            await bot.send_message(chat_id=chat_id, text="❌ 수집된 기사가 없습니다.")
+            return
+
+        # ── 스펙 형식: 🇮🇷 이란 뉴스 (수집 {collectedAt} 기준) ──
+        lines = []
+        lines.append(f"🇮🇷 *이란 뉴스* (수집 {collected_at[:16]} 기준)\n")
+
+        for art in articles[:15]:
+            title = art.get("title", "")
+            source_name = art.get("sourceName", art.get("source", ""))
+            published = art.get("publishedAt", "")[:16]
+            summary = art.get("summary", "")[:300]
+            url = art.get("url", "")
+            cv = art.get("crossValidation", {})
+            has_western = cv.get("hasWesternCoverage", False)
+            confidence = cv.get("confidenceScore", 0)
+
+            lines.append(f"[{source_name}] {title}")
+            lines.append(f"⏰ {published} | 신뢰도: {confidence}%")
+
+            if has_western:
+                lines.append("🔄 *CROSS-VALIDATED*")
+                western_sources = cv.get("westernSources", [])
+                if western_sources:
+                    lines.append(f"🌐 서방 확인: {', '.join(western_sources[:3])}")
+
+            lines.append(f"_{summary}_")
+            if url and url != "#":
+                lines.append(f"🔗 {url}")
+            lines.append("")
+
+        full_text = "\n".join(lines).strip()
 
         # 저장
-        from datetime import datetime, timezone, timedelta
+        from datetime import datetime
         import os
         ts = datetime.now().strftime("%Y%m%d-%H%M")
         save_dir = "/Users/sykim/workspace/crawled"
         os.makedirs(save_dir, exist_ok=True)
-        save_path = os.path.join(save_dir, f"iran-news-{ts}.md")
-
-        raw_articles = "\n\n".join(
-            f"### [{a['source']}] {a['title']}\n🕐 {a['pub_str']}\n{a['summary']}\n{a['link']}"
-            for side in ["이란측", "서방/중립"] for a in news[side]
-        )
-
-        # ── 중복 추적 파일 업데이트 (스케줄 자동실행만 저장, 수동 /news는 저장 안 함) ──
-        seen_file = "/Users/sykim/workspace/crawled/iran-news-seen.json"
-        new_links = [a["link"] for side in ["이란측", "서방/중립"] for a in news[side] if a.get("link")]
-        if new_links and save_seen:
-            now_str = datetime.now(timezone.utc).isoformat()
-            dedup_window = timedelta(hours=1)
-            existing = {}
-            if os.path.exists(seen_file):
-                try:
-                    with open(seen_file, "r", encoding="utf-8") as f:
-                        raw = json.load(f)
-                    existing = raw if isinstance(raw, dict) else {}
-                except Exception:
-                    existing = {}
-            # 1시간 초과 항목 정리 + 신규 추가
-            cutoff_ts = datetime.now(timezone.utc) - dedup_window
-            pruned = {
-                link: ts for link, ts in existing.items()
-                if datetime.fromisoformat(ts) > cutoff_ts
-            }
-            for link in new_links:
-                pruned[link] = now_str
-            with open(seen_file, "w", encoding="utf-8") as f:
-                json.dump(pruned, f, ensure_ascii=False, indent=2)
+        save_path = os.path.join(save_dir, f"iran-news-xps-{ts}.md")
 
         with open(save_path, "w", encoding="utf-8") as f:
-            f.write(f"# 이란 뉴스 교차검증 리포트\n\n")
+            f.write(f"# 이란 뉴스 리포트\n\n")
             f.write(f"- **생성:** {datetime.now().strftime('%Y-%m-%d %H:%M')}\n")
-            f.write(f"- **수집:** 이란측 {iran_cnt}건 · 서방/중립 {west_cnt}건\n\n---\n\n")
-            f.write(f"## 분석 결과\n\n{analysis}\n\n---\n\n## 원문 기사\n\n{raw_articles}\n")
+            f.write(f"- **수집:** {len(articles)}건\n\n---\n\n")
+            f.write(full_text)
+            f.write(f"\n\n---\n\n## 원본 데이터\n\n```json\n{json.dumps(news_data, ensure_ascii=False, indent=2)}\n```\n")
 
         # 전송 (4000자 초과 시 분할)
-        header = f"📰 *이란 뉴스 교차검증 리포트*\n이란측 {iran_cnt}건 · 서방 {west_cnt}건 · {elapsed:.0f}초 _(신규만, 중복 제외)_\n\n"
-        full = header + analysis
-        if len(full) > 4000:
-            await bot.send_message(chat_id=chat_id, text=header + analysis[:3800] + "\n_(계속)_", parse_mode="Markdown")
-            await bot.send_message(chat_id=chat_id, text=analysis[3800:], parse_mode="Markdown")
+        if len(full_text) > 4000:
+            await bot.send_message(chat_id=chat_id, text=full_text[:3900] + "\n_(계속)_", parse_mode="Markdown")
+            await bot.send_message(chat_id=chat_id, text=full_text[3900:], parse_mode="Markdown")
         else:
             try:
-                await bot.send_message(chat_id=chat_id, text=full, parse_mode="Markdown")
-            except:
-                await bot.send_message(chat_id=chat_id, text=full)
+                await bot.send_message(chat_id=chat_id, text=full_text, parse_mode="Markdown")
+            except Exception:
+                await bot.send_message(chat_id=chat_id, text=full_text)
 
         await bot.send_message(chat_id=chat_id, text=f"💾 저장: `{save_path}`", parse_mode="Markdown")
 
     except Exception as e:
-        logger.error(f"뉴스 리포트 오류: {e}")
+        logger.error(f"이란 뉴스 리포트 오류: {e}")
         await bot.send_message(chat_id=chat_id, text=f"❌ 오류: {str(e)[:200]}")
 
 
+async def send_news_report(bot, chat_id: int, user_id: int = None, save_seen: bool = False):
+    """호환성 유지 — /news는 iran_news_report로 위임"""
+    await send_iran_news_report(bot, chat_id, user_id)
+
+
 async def cmd_news(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """/news — 이란 뉴스 교차검증 리포트"""
+    """/news — 이란 뉴스 리포트 (XPS API)"""
     user_id = update.effective_user.id
     chat_id = update.effective_chat.id
-    await send_news_report(update.get_bot(), chat_id, user_id)
+    await send_iran_news_report(update.get_bot(), chat_id, user_id)
+
+
+async def cmd_iran_news(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """/irannews — 이란 뉴스 리포트 (XPS API)"""
+    user_id = update.effective_user.id
+    chat_id = update.effective_chat.id
+    await send_iran_news_report(update.get_bot(), chat_id, user_id)
 
 
 async def scheduled_news_report(context):
     """매일 아침 자동 뉴스 리포트"""
-    await send_news_report(context.bot, MASTER_CHAT_ID, save_seen=True)
+    await send_iran_news_report(context.bot, MASTER_CHAT_ID)
 
 
 async def cmd_crawl(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1839,6 +1947,8 @@ def main():
     app.add_handler(CommandHandler("cancel", cancel_task))
     app.add_handler(CommandHandler("crawl", cmd_crawl))
     app.add_handler(CommandHandler("news", cmd_news))
+    app.add_handler(CommandHandler("irannews", cmd_iran_news))
+    app.add_handler(CommandHandler("iran", cmd_iran_news))
     app.add_handler(CommandHandler("h", help_cmd))
     
     # 메시지 핸들러
@@ -1854,7 +1964,9 @@ def main():
         BotCommand("transcribe", "나스 폴더 자막 추출 [폴더경로] [모델]"),
         BotCommand("translate", "SRT 파일 한국어 번역 [srt경로]"),
         BotCommand("clean", "SRT 환각 제거 + 검증 [srt경로]"),
-        BotCommand("news", "이란 뉴스 교차검증 리포트"),
+        BotCommand("news", "이란 뉴스 리포트 (XPS API)"),
+        BotCommand("irannews", "이란 뉴스 리포트 (동일)"),
+        BotCommand("iran", "이란 뉴스 리포트 (동일)"),
         BotCommand("crawl", "사이트 크롤링 + 번역 [URL]"),
         BotCommand("cancel", "진행 중인 작업 취소"),
         BotCommand("status", "서버 상태 확인"),

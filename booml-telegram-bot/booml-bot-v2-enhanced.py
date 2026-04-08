@@ -105,6 +105,10 @@ BOOML_TOOLS = [
     {"type":"function","function":{"name":"read_file","description":"Read a local file","parameters":{"type":"object","properties":{"path":{"type":"string","description":"Absolute file path under /Users/sykim/"}},"required":["path"]}}},
     {"type":"function","function":{"name":"write_file","description":"Write content to a local file","parameters":{"type":"object","properties":{"path":{"type":"string"},"content":{"type":"string"}},"required":["path","content"]}}},
     {"type":"function","function":{"name":"list_dir","description":"List directory contents","parameters":{"type":"object","properties":{"path":{"type":"string"}},"required":["path"]}}},
+    {"type":"function","function":{"name":"exec","description":"Execute allowed shell commands (ls, cat, grep, find, cd, pwd, date, echo, head, tail, wc, git, npm, etc.)","parameters":{"type":"object","properties":{"command":{"type":"string","description":"Shell command"},"working_dir":{"type":"string","description":"Working directory (default /Users/sykim)"}},"required":["command"]}}},
+    {"type":"function","function":{"name":"memory_read","description":"Read Boom's memory files. Use today, yesterday, week, all, or date YYYY-MM-DD","parameters":{"type":"object","properties":{"path":{"type":"string","description":"Memory path: today/yesterday/week/all/date"}},"required":["path"]}}},
+    {"type":"function","function":{"name":"memory_write","description":"Write content to Boom's memory file (auto timestamped)","parameters":{"type":"object","properties":{"content":{"type":"string","description":"Content to save"},"path":{"type":"string","description":"Optional path override"}},"required":["content"]}}},
+    {"type":"function","function":{"name":"fetch_url","description":"Fetch and extract readable content from a URL","parameters":{"type":"object","properties":{"url":{"type":"string","description":"HTTP/HTTPS URL"}},"required":["url"]}}},
 ]
 
 async def query_mlx(prompt: str, user_id: int = None, project_id: str = None, timeout_sec: int = 120, messages: list = None) -> tuple[str, float, dict]:
@@ -122,7 +126,7 @@ async def query_mlx(prompt: str, user_id: int = None, project_id: str = None, ti
                 json={
                     'messages': api_messages,
                     'model': 'booml-mlx',
-                    'max_tokens': 512,
+                    'max_tokens': 2048,
                     'temperature': 0.5,
                     'user_id': user_id_str,
                     'project_id': project_id,

@@ -96,7 +96,7 @@ except ImportError as e:
 # ──────────────────────────────────────────────
 # 설정
 # ──────────────────────────────────────────────
-MAX_TOKENS_DEFAULT = 512  # 짧은 답변을 강제하기 위해 감소
+MAX_TOKENS_DEFAULT = 1024  # 일반 모드 기본값 (토큰 절약模式下에서 512로 별도 설정 가능)
 PORT = int(os.environ.get("PORT", 8000))
 
 # NAS 경로 설정 - 환경 변수 또는 기본값
@@ -442,6 +442,229 @@ async def tool_get_weather(city: str) -> str:
 
 
 
+# ──────────────────────────────────────────────
+# 추가 툴 함수들 (2단계)
+# ──────────────────────────────────────────────
+
+# 허용 명령어 화이트리스트 (보안)
+ALLOWED_COMMANDS = {
+    "ls", "la", "ll", "cd", "pwd", "cat", "head", "tail", "wc",
+    "grep", "find", "echo", "date", "whoami", "hostname",
+    "ps", "top", "df", "du", "free", "uptime", "curl", "wget",
+    "git", "npm", "node", "python3", "pip3", "brew", "open",
+}
+
+async def tool_exec(command: str, working_dir: str = "/Users/sykim") -> str:
+    """로컬 명령어 실행 툴 (허용 명령어만実行, 보안 강화)"""
+    try:
+        import os
+        import subprocess
+        import shlex
+
+        # 명령어 파싱
+        parts = shlex.split(command)
+        if not parts:
+            return "Error: Empty command"
+
+        base_cmd = parts[0]
+
+        # 허용 명령어 체크
+        if base_cmd not in ALLOWED_COMMANDS:
+            return f"Error: Command '{base_cmd}' not allowed. Use only: {', '.join(sorted(ALLOWED_COMMANDS))}"
+
+        # 위험한 인자 체크
+        dangerous_patterns = ["&", "|", ";", "`", "$", "<<", ">>", ">|"]
+        full_cmd = " ".join(parts)
+        for pattern in dangerous_patterns:
+            if pattern in full_cmd:
+                return f"Error: Dangerous pattern '{pattern}' not allowed"
+
+        # cd 명령어 특별 처리
+        if base_cmd == "cd":
+            if len(parts) < 2:
+                return f"Now in: {working_dir}"
+            new_dir = os.path.abspath(os.path.join(working_dir, parts[1]))
+            if not new_dir.startswith("/Users/sykim"):
+                return "Error: Can only cd to /Users/sykim/ directory"
+            if os.path.isdir(new_dir):
+                return f"Changed directory to: {new_dir}"
+            return f"Error: Directory not found: {new_dir}"
+
+        # 명령어 실행 (타임아웃 10초)
+        result = subprocess.run(
+            command,
+            shell=True,
+            cwd=working_dir,
+            capture_output=True,
+            text=True,
+            timeout=10,
+            env={"HOME": "/Users/sykim", "PATH": os.environ.get("PATH", "")}
+        )
+
+        output = result.stdout.strip() if result.stdout else ""
+        error = result.stderr.strip() if result.stderr else ""
+
+        if result.returncode != 0:
+            return f"Error (exit {result.returncode}): {error or output}"
+
+        return output[:5000] if output else "Command executed successfully (no output)"
+
+    except subprocess.TimeoutExpired:
+        return "Error: Command timed out (max 10 seconds)"
+    except Exception as e:
+        logger.error(f"tool_exec 실패: {e}")
+        return f"Error executing command: {e}"
+
+
+async def tool_memory_read(path: str = "today") -> str:
+    """붐엘 메모리 읽기 툴 (memory/*.md 파일)"""
+    try:
+        import os
+        from datetime import datetime
+
+        # 경로 결정
+        base_path = "/Users/sykim/.openclaw/workspace/memory"
+
+        if path == "today":
+            today = datetime.now().strftime("%Y-%m-%d")
+            file_path = os.path.join(base_path, f"{today}.md")
+        elif path == "yesterday":
+            from datetime import timedelta
+            yesterday = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
+            file_path = os.path.join(base_path, f"{yesterday}.md")
+        elif path == "week":
+            # 최근 7일치 메모리 조회
+            results = []
+            from datetime import timedelta
+            for i in range(7):
+                date = (datetime.now() - timedelta(days=i)).strftime("%Y-%m-%d")
+                file_path = os.path.join(base_path, f"{date}.md")
+                if os.path.exists(file_path):
+                    with open(file_path, 'r', encoding='utf-8') as f:
+                        content = f.read()
+                    results.append(f"=== {date} ===\n{content}")
+            return "\n\n".join(results) if results else "No memory files found for the past week."
+        elif path == "all":
+            # 전체 메모리 파일
+            if not os.path.exists(base_path):
+                return "Memory directory not found"
+            files = sorted([f for f in os.listdir(base_path) if f.endswith(".md")])
+            results = []
+            for f in files[-14:]:  # 최근 2주
+                file_path = os.path.join(base_path, f)
+                with open(file_path, 'r', encoding='utf-8') as fp:
+                    results.append(f"=== {f} ===\n{fp.read()}")
+            return "\n\n".join(results) if results else "No memory files found."
+        else:
+            # 명시적 경로
+            if not path.startswith("/"):
+                file_path = os.path.join(base_path, path if path.endswith(".md") else f"{path}.md")
+            else:
+                file_path = path
+
+        # 파일 존재 확인
+        if not os.path.exists(file_path):
+            return f"Memory file not found: {file_path}"
+
+        # 파일 읽기
+        with open(file_path, 'r', encoding='utf-8') as f:
+            content = f.read()
+
+        return f"Memory: {file_path}\n\n{content}"
+
+    except Exception as e:
+        logger.error(f"tool_memory_read 실패: {e}")
+        return f"Error reading memory: {e}"
+
+
+async def tool_memory_write(content: str, path: str = None) -> str:
+    """붐엘 메모리 쓰기 툴 (memory/*.md 파일)"""
+    try:
+        import os
+        from datetime import datetime
+
+        base_path = "/Users/sykim/.openclaw/workspace/memory"
+
+        # 경로 결정
+        if path:
+            if not path.startswith("/"):
+                file_path = os.path.join(base_path, path if path.endswith(".md") else f"{path}.md")
+            else:
+                file_path = path
+        else:
+            today = datetime.now().strftime("%Y-%m-%d")
+            file_path = os.path.join(base_path, f"{today}.md")
+
+        # 보안 체크
+        if not file_path.startswith("/Users/sykim/.openclaw/workspace/memory"):
+            return "Error: Can only write to /Users/sykim/.openclaw/workspace/memory/ directory"
+
+        # 디렉토리 생성
+        os.makedirs(os.path.dirname(file_path), exist_ok=True)
+
+        # 파일 쓰기 (추가 모드)
+        timestamp = datetime.now().strftime("%H:%M KST")
+        with open(file_path, 'a', encoding='utf-8') as f:
+            f.write(f"\n## {timestamp} [booml] Memory Update\n{content}\n")
+
+        return f"Memory saved to: {file_path}"
+
+    except Exception as e:
+        logger.error(f"tool_memory_write 실패: {e}")
+        return f"Error writing memory: {e}"
+
+
+async def tool_fetch_url(url: str) -> str:
+    """웹페이지 가져오기 툴 (HTML → 마크다운/텍스트 추출)"""
+    try:
+        import re
+
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url, timeout=aiohttp.ClientTimeout(total=15)) as resp:
+                if resp.status != 200:
+                    return f"Error: HTTP {resp.status}"
+
+                html = await resp.text()
+
+        # 간단한 HTML → 텍스트 변환
+        from html import unescape
+
+        # 메타 태그에서 제목 추출
+        title_match = re.search(r'<title[^>]*>([^<]+)</title>', html, re.IGNORECASE)
+        title = title_match.group(1).strip() if title_match else ""
+
+        # 메타 Description 추출
+        desc_match = re.search(r'<meta[^>]+name=["\']description["\'][^>]+content=["\']([^"\']+)["\']', html, re.IGNORECASE)
+        description = desc_match.group(1).strip() if desc_match else ""
+
+        # 스크립트/스타일 제거
+        text = re.sub(r'<script[^>]*>.*?</script>', '', html, flags=re.DOTALL | re.IGNORECASE)
+        text = re.sub(r'<style[^>]*>.*?</style>', '', text, flags=re.DOTALL | re.IGNORECASE)
+
+        # HTML 엔티티 디코딩
+        text = unescape(text)
+
+        # 태그 제거 및 공백 정리
+        text = re.sub(r'<[^>]+>', ' ', text)
+        text = re.sub(r'\s+', ' ', text)
+        text = text.strip()
+
+        result = f"[URL] {url}\n"
+        if title:
+            result += f"[Title] {title}\n"
+        if description:
+            result += f"[Description] {description}\n"
+        result += f"\n[Content Preview]\n{text[:3000]}"
+
+        return result
+
+    except asyncio.TimeoutError:
+        return "Error: Request timed out (max 15 seconds)"
+    except Exception as e:
+        logger.error(f"tool_fetch_url 실패: {e}")
+        return f"Error fetching URL: {e}"
+
+
 async def get_realtime_data(user_message: str = None) -> str:
     """실시간 데이터 수집 (주식, 날씨, 뉴스) + 웹 검색"""
     try:
@@ -751,23 +974,36 @@ async def chat_completion(request: ChatCompletionRequest) -> ChatCompletionRespo
                 "write_file": lambda args: tool_write_file(args.get("path", ""), args.get("content", "")),
                 "list_dir": lambda args: tool_list_dir(args.get("path", "")),
                 "get_weather": lambda args: tool_get_weather(args.get("city", "")),
+                "exec": lambda args: tool_exec(args.get("command", ""), args.get("working_dir", "/Users/sykim")),
+                "memory_read": lambda args: tool_memory_read(args.get("path", "today")),
+                "memory_write": lambda args: tool_memory_write(args.get("content", ""), args.get("path", None)),
+                "fetch_url": lambda args: tool_fetch_url(args.get("url", "")),
             }
 
             # 최대 5회 tool call 루프 (무한 루프 방지)
             max_iterations = 5
             current_messages = [{"role": m.role, "content": m.content} for m in request.messages]
 
-            # 시스템 프롬프트가 없으면 툴 사용 유도 주입
+            # 시스템 프롬프트가 없으면 툴 사용 유도 주입 (Few-shot 포함)
             has_system = any(m.get("role") == "system" for m in current_messages)
             if not has_system:
                 tool_names = [t.get("function", {}).get("name", "") for t in request.tools]
                 system_content = (
-                    f"You have access to the following tools: {', '.join(tool_names)}. "
-                    "RULES: "
-                    "1. When the user asks for real-time information (weather, news, stock prices, files, etc.), you MUST call the appropriate tool. Never fabricate or guess real-time data. "
-                    "2. For follow-up questions (e.g. '내일은?', '모레는?', '거기는?'), infer the missing context (city, topic, etc.) from the conversation history and call the tool again with the inferred context. "
-                    "3. The get_weather tool returns today + tomorrow + day-after-tomorrow forecast. Use this data to answer questions about future weather without calling the tool again. "
-                    "4. Respond in the same language as the user (Korean if user speaks Korean)."
+                    f"You have access to the following tools: {', '.join(tool_names)}.\n\n"
+                    "RULES:\n"
+                    "1. When the user asks for real-time information (weather, news, stock prices, files, etc.), you MUST call the appropriate tool. Never fabricate or guess real-time data.\n"
+                    "2. For follow-up questions (e.g. '내일은?', '모레는?', '거기는?'), infer the missing context (city, topic, etc.) from the conversation history and call the tool again with the inferred context.\n"
+                    "3. The get_weather tool returns today + tomorrow + day-after-tomorrow forecast. Use this data to answer questions about future weather without calling the tool again.\n"
+                    "4. Respond in the same language as the user (Korean if user speaks Korean).\n"
+                    "5. For file operations, read existing files first to understand the structure before writing.\n"
+                    "6. For exec commands, use only allowed commands (ls, cat, grep, find, cd, pwd, date, echo, head, tail, wc). Never run rm, mv, chmod, dd, or any destructive commands.\n\n"
+                    "EXAMPLES:\n"
+                    "User: 서울 날씨 알려줘\n"
+                    "Assistant: <|tool_call>call:get_weather{city:<|\"|>서울<|\"|>}<tool_call|>\n\n"
+                    "User: /Users/sykim/workspace/project/README.md 파일 읽어줘\n"
+                    "Assistant: <|tool_call>call:read_file{path:<|\"|>/Users/sykim/workspace/project/README.md<|\"|>}<tool_call|>\n\n"
+                    "User: 오늘的新闻有什么\n"
+                    "Assistant: <|tool_call>call:web_search{query:<|\"|>今日新闻<|\"|>}<tool_call|>\n"
                 )
                 current_messages = [{"role": "system", "content": system_content}] + current_messages
 

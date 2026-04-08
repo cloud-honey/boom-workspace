@@ -1,0 +1,15 @@
+{
+  "agents": {
+    "list": [
+      {
+        "id": "boomx",
+        "name": "붐스",
+        "model": {
+          "primary": "deepseek/deepseek-chat",
+          "fallbacks": ["openai-codex/gpt-5.4"]
+        },
+        "restrictFallbacks": true
+      }
+    ]
+  }
+}
