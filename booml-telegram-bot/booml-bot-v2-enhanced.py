@@ -859,6 +859,77 @@ async def cmd_transcribe_scan(update: Update, context: ContextTypes.DEFAULT_TYPE
     await update.message.reply_text(summary, parse_mode='Markdown')
 
 
+async def cmd_ingest(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    /ingest [URL] — URL을 붐엘 Wiki에 수집/저장.
+    Args:
+        update: Telegram Update object
+        context: Telegram context with args
+    """
+    args = context.args if context.args else []
+    if not args:
+        await update.message.reply_text(
+            "사용법: `/ingest https://example.com`\n"
+            "URL을 분석해서 붐엘 Wiki에 저장합니다.",
+            parse_mode='Markdown'
+        )
+        return
+
+    url = args[0].strip()
+    if not url.startswith("http"):
+        await update.message.reply_text("URL은 http:// 또는 https://로 시작해야 합니다.")
+        return
+
+    # 진행 중 메시지 전송
+    status_msg = await update.message.reply_text(
+        f"⏳ Ingesting: `{url}`\n\nURL 분석 중... (30-60초 소요될 수 있습니다)",
+        parse_mode='Markdown'
+    )
+
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                f"{MLX_SERVER_URL}/wiki/ingest",
+                json={"url": url},
+                timeout=aiohttp.ClientTimeout(total=180)
+            ) as resp:
+                data = await resp.json()
+
+        if "error" in data:
+            await status_msg.edit_text(
+                f"Ingest 실패: `{data['error']}`",
+                parse_mode='Markdown'
+            )
+            return
+
+        # 성공 응답
+        title = data.get("title", "Unknown")
+        path = data.get("path", "")
+        mode = data.get("mode", "new")
+        page_type = data.get("page_type", "topic")
+        tags = data.get("tags", [])
+        tags_str = ", ".join(f"`{t}`" for t in tags) if tags else "-"
+        mode_emoji = "새 페이지" if mode == "new" else "페이지 업데이트"
+
+        summary = (
+            f"Wiki 페이지 {mode_emoji}\n\n"
+            f"제목: *{title}*\n"
+            f"경로: `{path}`\n"
+            f"유형: {page_type}\n"
+            f"태그: {tags_str}\n"
+            f"소스: {url}"
+        )
+        await status_msg.edit_text(summary, parse_mode='Markdown')
+
+    except asyncio.TimeoutError:
+        await status_msg.edit_text(
+            "타임아웃: LLM 분석에 시간이 너무 걸렸습니다. 나중에 다시 시도해 주세요."
+        )
+    except Exception as e:
+        logger.error(f"[ingest] 오류: {e}")
+        await status_msg.edit_text(f"오류 발생: {str(e)[:200]}")
+
+
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_msg = update.message.text
     user_name = update.effective_user.first_name
@@ -1226,7 +1297,8 @@ def main():
     app.add_handler(CommandHandler("clean", cmd_clean))
     app.add_handler(CommandHandler("cancel", cancel_task))
     app.add_handler(CommandHandler("h", help_cmd))
-    
+    app.add_handler(CommandHandler("ingest", cmd_ingest))
+
     # 메시지 핸들러
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     
@@ -1237,6 +1309,7 @@ def main():
     from telegram import BotCommand
     commands = [
         BotCommand("h", "도움말"),
+        BotCommand("ingest", "URL을 Wiki에 저장 [URL]"),
         BotCommand("transcribe", "나스 폴더 자막 추출 [폴더경로] [모델]"),
         BotCommand("translate", "SRT 파일 한국어 번역 [srt경로]"),
         BotCommand("clean", "SRT 환각 제거 + 검증 [srt경로]"),

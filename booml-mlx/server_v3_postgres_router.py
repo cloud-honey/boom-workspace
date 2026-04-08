@@ -2057,6 +2057,32 @@ async def architecture_status():
 
 
 # ──────────────────────────────────────────────
+# Wiki Ingest 엔드포인트 (P2)
+# ──────────────────────────────────────────────
+
+from fastapi import Request as FastAPIRequest
+
+@app.post("/wiki/ingest")
+async def wiki_ingest_endpoint(request: FastAPIRequest):
+    """
+    Wiki Ingest API — URL을 wiki 페이지로 수집/저장.
+    Body: {"url": "https://..."}
+    Returns: {"status": "ok", "path": "topics/xxx.md", "title": "...", "mode": "new"|"update"}
+    """
+    body = await request.json()
+    url = body.get("url", "").strip()
+    if not url:
+        return {"error": "url is required"}
+    try:
+        from wiki_ingest import ingest_url
+        result = await ingest_url(url)
+        return result
+    except Exception as e:
+        logger.error(f"wiki ingest error: {e}")
+        return {"error": str(e)}
+
+
+# ──────────────────────────────────────────────
 # 실행
 # ──────────────────────────────────────────────
 if __name__ == "__main__":
