@@ -38,17 +38,6 @@
 - 게이트웨이 정상 동작 중이면 별도 보고 안 함 (HEARTBEAT_OK만)
 - 게이트웨이 down/에러 감지 시에만 텔레그램 보고
 
-## XPS 노드 상태 모니터링
-- 매 heartbeat마다 XPS 노드 상태 확인:
-  ```
-  exec: openclaw nodes invoke --node "XPS Node" --command system.run --params '{"command":["/home/sykim/xps-status.sh"]}'
-  ```
-- 응답에서 `gateway` 값이 `active`가 아니면 즉시 텔레그램 보고:
-  `⚠️ XPS 게이트웨이 다운: [상태값] — 붐스 응답 불가 상태`
-- XPS 노드 자체가 연결 안 되면 (invoke 실패):
-  `⚠️ XPS 노드 연결 끊김 — XPS 전원 꺼짐 또는 네트워크 문제`
-- 이상 없으면 보고 안 해도 됨 (HEARTBEAT_OK)
-
 ## 하트비트 로그 기록 (필수)
 매 heartbeat 실행 시 반드시 아래 파일에 1줄 로그를 append할 것:
 `/Users/sykim/.openclaw/workspace/logs/heartbeat.log`
